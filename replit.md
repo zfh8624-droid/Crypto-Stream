@@ -48,6 +48,19 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 - `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
 - `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
 
+## Artifacts
+
+### `artifacts/price-tracker` (`@workspace/price-tracker`)
+
+React + Vite 实时价格追踪前端应用。纯前端，无需后端。
+
+- 通过 WebSocket 直连 Binance（加密货币）和 Finnhub（股票）获取实时价格
+- WebSocket URL 和 Token 展示在页面上可随时修改
+- 支持自定义交易对/股票代码的添加删除
+- 价格变动有上涨/下跌闪烁动画提示
+- 自动断线重连
+- Tabs: 加密货币（Binance, 免费无需注册）/ 股票（Finnhub, 需免费注册获取Token）
+
 ## Packages
 
 ### `artifacts/api-server` (`@workspace/api-server`)

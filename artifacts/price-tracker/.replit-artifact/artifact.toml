@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "实时价格追踪器"
+version = "1.0.0"
+id = "artifacts/price-tracker"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24503
+
+[services.development]
+run = "pnpm --filter @workspace/price-tracker run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/price-tracker", "run", "build" ]
+publicDir = "artifacts/price-tracker/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24503"
+BASE_PATH = "/"
