@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { Server, IncomingMessage } from "http";
 import { logger } from "./lib/logger";
+import iconv from "iconv-lite";
 
 export interface AShareQuote {
   code: string;
@@ -74,7 +75,8 @@ async function pollSina(codes: string[]) {
       logger.warn({ status: res.status }, "Sina API returned non-OK status");
       return;
     }
-    const text = await res.text();
+    const buffer = await res.arrayBuffer();
+    const text = iconv.decode(Buffer.from(buffer), "gbk");
     const lines = text.trim().split("\n");
     const updates: AShareQuote[] = [];
     for (const line of lines) {
