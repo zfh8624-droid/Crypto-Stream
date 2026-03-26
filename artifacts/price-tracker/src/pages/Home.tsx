@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useRef, useMemo, useCallback } from "react";
 import { useBinanceTracker, useFinnhubTracker, PriceEntry } from "@/hooks/usePriceTracker";
 import { useAShareTracker, AShareQuote } from "@/hooks/useAShareWS";
 import { WSStatus } from "@/hooks/useWebSocket";
@@ -9,6 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+
+const WS_PASSWORD = "zfh8624";
 
 const DEFAULT_BINANCE_WS = "wss://stream.binance.com:9443";
 const DEFAULT_CRYPTO_SYMBOLS = ["BTC", "ETH", "BNB", "SOL", "XRP"];
@@ -24,6 +34,61 @@ const DEFAULT_ASHARE_SYMBOLS = [
   "sh600519",
   "sz000001",
 ];
+
+function usePasswordDialog(onConfirmed: (value: string) => void) {
+  const [open, setOpen] = useState(false);
+  const [pwd, setPwd] = useState("");
+  const [error, setError] = useState("");
+  const pendingRef = useRef<string>("");
+
+  const prompt = (value: string) => {
+    pendingRef.current = value;
+    setPwd("");
+    setError("");
+    setOpen(true);
+  };
+
+  const handleConfirm = () => {
+    if (pwd === WS_PASSWORD) {
+      setOpen(false);
+      onConfirmed(pendingRef.current);
+    } else {
+      setError("密码错误，请重试");
+      setPwd("");
+    }
+  };
+
+  const dialog = (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) setOpen(false); }}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>身份验证</DialogTitle>
+          <DialogDescription>修改 WebSocket 地址需要验证密码</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div className="space-y-1.5">
+            <Label className="text-sm">密码</Label>
+            <Input
+              type="password"
+              value={pwd}
+              onChange={(e) => { setPwd(e.target.value); setError(""); }}
+              onKeyDown={(e) => e.key === "Enter" && handleConfirm()}
+              placeholder="请输入密码"
+              autoFocus
+            />
+          </div>
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>取消</Button>
+          <Button onClick={handleConfirm}>确认</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  return { prompt, dialog };
+}
 
 function StatusDot({ status }: { status: WSStatus }) {
   const color =
@@ -205,17 +270,52 @@ function WSConfigPanel({
   urlPlaceholder: string; tokenPlaceholder?: string; readOnly?: boolean;
   extra?: React.ReactNode;
 }) {
+  const [editUrl, setEditUrl] = useState(wsUrl);
+  const isDirty = editUrl !== wsUrl;
+
+  const { prompt, dialog } = usePasswordDialog((confirmed) => {
+    onWsUrlChange(confirmed);
+  });
+
+  const handleApply = () => {
+    if (editUrl.trim() === wsUrl) return;
+    prompt(editUrl.trim());
+  };
+
   return (
     <div className="space-y-3 p-4 rounded-lg bg-muted/40 border border-border">
+      {dialog}
       <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
         {label} WebSocket 配置
       </div>
       <div className="space-y-1.5">
         <Label className="text-xs">WebSocket 地址</Label>
-        <Input
-          value={wsUrl} onChange={(e) => onWsUrlChange(e.target.value)}
-          placeholder={urlPlaceholder} className="text-xs font-mono" readOnly={readOnly}
-        />
+        {readOnly ? (
+          <Input
+            value={wsUrl}
+            readOnly
+            placeholder={urlPlaceholder}
+            className="text-xs font-mono"
+          />
+        ) : (
+          <div className="flex gap-2">
+            <Input
+              value={editUrl}
+              onChange={(e) => setEditUrl(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleApply()}
+              placeholder={urlPlaceholder}
+              className="text-xs font-mono flex-1"
+            />
+            <Button
+              size="sm"
+              variant={isDirty ? "default" : "outline"}
+              disabled={!isDirty}
+              onClick={handleApply}
+            >
+              确认修改
+            </Button>
+          </div>
+        )}
       </div>
       {showToken && onTokenChange && (
         <div className="space-y-1.5">
