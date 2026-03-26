@@ -18,7 +18,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
-const WS_PASSWORD = "zfh8624";
+const WS_PASSWORD = import.meta.env.VITE_WS_PASSWORD as string;
 
 const DEFAULT_BINANCE_WS = "wss://stream.binance.com:9443";
 const DEFAULT_CRYPTO_SYMBOLS = ["BTC", "ETH", "BNB", "SOL", "XRP"];
