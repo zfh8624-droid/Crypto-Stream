@@ -1,11 +1,12 @@
 import { useState, useMemo, useCallback } from "react";
 import { useBinanceTracker, useFinnhubTracker, PriceEntry } from "@/hooks/usePriceTracker";
+import { useAShareTracker, AShareQuote } from "@/hooks/useAShareWS";
 import { WSStatus } from "@/hooks/useWebSocket";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 
@@ -15,6 +16,14 @@ const DEFAULT_CRYPTO_SYMBOLS = ["BTC", "ETH", "BNB", "SOL", "XRP"];
 const DEFAULT_FINNHUB_WS = "wss://ws.finnhub.io";
 const DEFAULT_FINNHUB_TOKEN = "";
 const DEFAULT_STOCK_SYMBOLS = ["AAPL", "GOOGL", "TSLA", "AMZN", "MSFT"];
+
+const DEFAULT_ASHARE_SYMBOLS = [
+  "sh510300",
+  "sh510500",
+  "sh510050",
+  "sh600519",
+  "sz000001",
+];
 
 function StatusDot({ status }: { status: WSStatus }) {
   const color =
@@ -107,6 +116,78 @@ function PriceCard({ entry }: { entry: PriceEntry }) {
   );
 }
 
+function AShareCard({ quote }: { quote: AShareQuote }) {
+  const isUp = quote.changePct >= 0;
+  const flashClass =
+    quote.flash === "up"
+      ? "bg-green-50 dark:bg-green-950"
+      : quote.flash === "down"
+      ? "bg-red-50 dark:bg-red-950"
+      : "";
+
+  return (
+    <div
+      className={`rounded-xl border border-border p-4 transition-colors duration-300 ${flashClass}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="font-bold text-base leading-none">{quote.name}</div>
+          <div className="text-xs text-muted-foreground mt-0.5">{quote.code}</div>
+          {quote.time && (
+            <div className="text-xs text-muted-foreground mt-1">{quote.time}</div>
+          )}
+        </div>
+        <Badge
+          variant={isUp ? "default" : "destructive"}
+          className="text-xs shrink-0"
+        >
+          {isUp ? "+" : ""}
+          {quote.changePct.toFixed(2)}%
+        </Badge>
+      </div>
+      <div className="mt-3">
+        <span
+          className={`text-2xl font-mono font-bold transition-colors duration-300 ${
+            quote.flash === "up"
+              ? "text-green-600 dark:text-green-400"
+              : quote.flash === "down"
+              ? "text-red-600 dark:text-red-400"
+              : ""
+          }`}
+        >
+          ¥{quote.price.toFixed(3)}
+        </span>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-x-4 text-xs text-muted-foreground">
+        <div>
+          涨跌额:{" "}
+          <span className={isUp ? "text-green-600" : "text-red-500"}>
+            {isUp ? "+" : ""}{quote.change.toFixed(3)}
+          </span>
+        </div>
+        <div>昨收：{quote.prevClose.toFixed(3)}</div>
+        <div>今开：{quote.open.toFixed(3)}</div>
+        <div>最高：{quote.high.toFixed(3)}</div>
+        <div>最低：{quote.low.toFixed(3)}</div>
+        <div>
+          成交量：{(quote.volume / 10000).toFixed(0)}万手
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AShareEmptyCard({ code }: { code: string }) {
+  return (
+    <div className="rounded-xl border border-border p-4">
+      <div className="font-bold text-base leading-none text-muted-foreground">{code}</div>
+      <div className="mt-3 text-2xl font-mono font-bold text-muted-foreground">
+        等待数据...
+      </div>
+    </div>
+  );
+}
+
 function SymbolInput({
   label,
   symbols,
@@ -123,7 +204,7 @@ function SymbolInput({
   const [input, setInput] = useState("");
 
   const handleAdd = () => {
-    const sym = input.trim().toUpperCase();
+    const sym = input.trim().toLowerCase();
     if (sym && !symbols.includes(sym)) {
       onAdd(sym);
       setInput("");
@@ -139,6 +220,56 @@ function SymbolInput({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleAdd()}
           placeholder={placeholder}
+          className="flex-1 text-sm font-mono"
+        />
+        <Button variant="outline" size="sm" onClick={handleAdd}>
+          添加
+        </Button>
+      </div>
+      <div className="flex flex-wrap gap-1.5 mt-1">
+        {symbols.map((sym) => (
+          <Badge
+            key={sym}
+            variant="secondary"
+            className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-colors"
+            onClick={() => onRemove(sym)}
+          >
+            {sym} ×
+          </Badge>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CryptoSymbolInput({
+  symbols,
+  onAdd,
+  onRemove,
+}: {
+  symbols: string[];
+  onAdd: (s: string) => void;
+  onRemove: (s: string) => void;
+}) {
+  const [input, setInput] = useState("");
+
+  const handleAdd = () => {
+    const sym = input.trim().toUpperCase();
+    if (sym && !symbols.includes(sym)) {
+      onAdd(sym);
+      setInput("");
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm font-medium">交易对（自动添加 USDT）</Label>
+      <div className="flex gap-2">
+        <Input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+          placeholder="例如 DOGE"
           className="flex-1 text-sm font-mono uppercase"
         />
         <Button variant="outline" size="sm" onClick={handleAdd}>
@@ -170,6 +301,8 @@ function WSConfigPanel({
   label,
   urlPlaceholder,
   tokenPlaceholder,
+  readOnly,
+  extra,
 }: {
   wsUrl: string;
   onWsUrlChange: (v: string) => void;
@@ -179,6 +312,8 @@ function WSConfigPanel({
   label: string;
   urlPlaceholder: string;
   tokenPlaceholder?: string;
+  readOnly?: boolean;
+  extra?: React.ReactNode;
 }) {
   return (
     <div className="space-y-3 p-4 rounded-lg bg-muted/40 border border-border">
@@ -192,6 +327,7 @@ function WSConfigPanel({
           onChange={(e) => onWsUrlChange(e.target.value)}
           placeholder={urlPlaceholder}
           className="text-xs font-mono"
+          readOnly={readOnly}
         />
       </div>
       {showToken && onTokenChange && (
@@ -215,6 +351,7 @@ function WSConfigPanel({
           />
         </div>
       )}
+      {extra}
     </div>
   );
 }
@@ -263,17 +400,13 @@ function CryptoTab() {
         onWsUrlChange={setWsUrl}
         urlPlaceholder={DEFAULT_BINANCE_WS}
       />
-      <SymbolInput
-        label="交易对（自动添加 USDT）"
+      <CryptoSymbolInput
         symbols={symbols}
         onAdd={addSymbol}
         onRemove={removeSymbol}
-        placeholder="例如 DOGE"
       />
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-muted-foreground">
-          实时价格
-        </span>
+        <span className="text-sm font-medium text-muted-foreground">实时价格</span>
         <StatusDot status={status} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -369,6 +502,71 @@ function StockTab() {
   );
 }
 
+function AShareTab() {
+  const [symbols, setSymbols] = useState(DEFAULT_ASHARE_SYMBOLS);
+  const { prices, status } = useAShareTracker(symbols);
+
+  const addSymbol = useCallback((s: string) => {
+    setSymbols((prev) => (prev.includes(s) ? prev : [...prev, s]));
+  }, []);
+  const removeSymbol = useCallback((s: string) => {
+    setSymbols((prev) => prev.filter((x) => x !== s));
+  }, []);
+
+  const wsUrl = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/ashare`;
+
+  return (
+    <div className="space-y-4">
+      <WSConfigPanel
+        label="A股行情 (新浪财经数据源)"
+        wsUrl={wsUrl}
+        onWsUrlChange={() => {}}
+        readOnly
+        urlPlaceholder=""
+        extra={
+          <div className="text-xs text-muted-foreground pt-1">
+            数据来源：新浪财经免费接口，后端代理推送，每 2 秒更新一次。仅交易时段有数据（周一至周五 9:30–15:00）。
+          </div>
+        }
+      />
+      <SymbolInput
+        label="代码格式：sh+沪市代码 / sz+深市代码"
+        symbols={symbols}
+        onAdd={addSymbol}
+        onRemove={removeSymbol}
+        placeholder="例如 sh510300 / sz000001"
+      />
+      <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-3 text-xs text-blue-800 dark:text-blue-300 space-y-1">
+        <div className="font-semibold">常用代码参考</div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-0.5 font-mono">
+          <span>sh510300 沪深300ETF</span>
+          <span>sh510500 中证500ETF</span>
+          <span>sh510050 上证50ETF</span>
+          <span>sh159919 沪深300ETF(嘉实)</span>
+          <span>sh600519 贵州茅台</span>
+          <span>sh601318 中国平安</span>
+          <span>sz000001 平安银行</span>
+          <span>sz300750 宁德时代</span>
+          <span>sh688981 中芯国际</span>
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-muted-foreground">实时行情</span>
+        <StatusDot status={status} />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {symbols.map((code) =>
+          prices[code] ? (
+            <AShareCard key={code} quote={prices[code]} />
+          ) : (
+            <AShareEmptyCard key={code} code={code} />
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -376,15 +574,19 @@ export default function Home() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">实时价格追踪</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            通过 WebSocket 长连接实时获取加密货币和股票价格
+            通过 WebSocket 长连接实时获取加密货币、美股和A股价格
           </p>
         </div>
         <Separator />
-        <Tabs defaultValue="crypto">
+        <Tabs defaultValue="ashare">
           <TabsList className="mb-4">
+            <TabsTrigger value="ashare">A股 / ETF</TabsTrigger>
             <TabsTrigger value="crypto">加密货币</TabsTrigger>
-            <TabsTrigger value="stock">股票</TabsTrigger>
+            <TabsTrigger value="stock">美股</TabsTrigger>
           </TabsList>
+          <TabsContent value="ashare">
+            <AShareTab />
+          </TabsContent>
           <TabsContent value="crypto">
             <CryptoTab />
           </TabsContent>
