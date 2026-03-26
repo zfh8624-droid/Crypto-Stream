@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 export type AssetType = "crypto" | "ashare";
 
@@ -37,7 +38,6 @@ interface SymbolState {
 
 const CRYPTO_INTERVALS = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
 const ASHARE_INTERVALS = ["5m", "15m", "30m", "1h", "1d"];
-
 const MA_TYPES: MAType[] = ["SMA", "EMA", "WMA"];
 
 const DEFAULT_CONFIG: GoldenCrossConfig = {
@@ -77,14 +77,34 @@ interface Props {
 }
 
 export function GoldenCrossMonitor({ assetType, symbols }: Props) {
-  const [config, setConfig] = useState<GoldenCrossConfig>(DEFAULT_CONFIG);
-  const [editConfig, setEditConfig] = useState<GoldenCrossConfig>(DEFAULT_CONFIG);
+  const intervals = assetType === "crypto" ? CRYPTO_INTERVALS : ASHARE_INTERVALS;
+
+  const [configs, setConfigs] = useState<Record<string, GoldenCrossConfig>>({});
+  const [editConfigs, setEditConfigs] = useState<Record<string, GoldenCrossConfig>>({});
   const [states, setStates] = useState<Record<string, SymbolState>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [testStatus, setTestStatus] = useState<"idle" | "sending" | "ok" | "err">("idle");
   const [testMsg, setTestMsg] = useState("");
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timersRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
 
-  const intervals = assetType === "crypto" ? CRYPTO_INTERVALS : ASHARE_INTERVALS;
+  const getConfig = useCallback(
+    (symbol: string): GoldenCrossConfig =>
+      configs[symbol] ?? { ...DEFAULT_CONFIG, interval: intervals[4] ?? "1h" },
+    [configs, intervals]
+  );
+
+  const getEditConfig = useCallback(
+    (symbol: string): GoldenCrossConfig =>
+      editConfigs[symbol] ?? { ...DEFAULT_CONFIG, interval: intervals[4] ?? "1h" },
+    [editConfigs, intervals]
+  );
+
+  const setEditField = (symbol: string, patch: Partial<GoldenCrossConfig>) => {
+    setEditConfigs((prev) => ({
+      ...prev,
+      [symbol]: { ...getEditConfig(symbol), ...patch },
+    }));
+  };
 
   const checkSymbol = useCallback(
     async (sym: MonitoredSymbol, cfg: GoldenCrossConfig) => {
@@ -119,28 +139,20 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
         setStates((prev) => {
           const prevState = prev[sym.symbol];
           const wasInSignal = prevState?.inSignal ?? false;
-          const newInSignal = isGolden ? true : false;
+          const newInSignal = isGolden;
           const isNewSignal = isGolden && !wasInSignal;
 
           if (isNewSignal) {
-            const priceStr =
-              price != null
-                ? price < 10
-                  ? price.toFixed(4)
-                  : price.toFixed(2)
-                : "-";
-            const ma1Str = ma1Val != null ? ma1Val.toFixed(4) : "-";
-            const ma2Str = ma2Val != null ? ma2Val.toFixed(4) : "-";
-            const ma3Str = ma3Val != null ? ma3Val.toFixed(4) : "-";
-
+            const fmt = (v: number) =>
+              v < 1 ? v.toFixed(6) : v < 100 ? v.toFixed(4) : v.toFixed(2);
             const msg =
               `🔔 金叉信号！\n` +
               `标的：${sym.displayName}（${sym.symbol}）\n` +
               `周期：${cfg.interval}  均线类型：${cfg.maType}\n` +
-              `当前价：${priceStr}\n` +
-              `MA${cfg.ma1}：${ma1Str}\n` +
-              `MA${cfg.ma2}：${ma2Str}\n` +
-              `MA${cfg.ma3}：${ma3Str}\n` +
+              `当前价：${price != null ? fmt(price) : "-"}\n` +
+              `MA${cfg.ma1}：${ma1Val != null ? fmt(ma1Val) : "-"}\n` +
+              `MA${cfg.ma2}：${ma2Val != null ? fmt(ma2Val) : "-"}\n` +
+              `MA${cfg.ma3}：${ma3Val != null ? fmt(ma3Val) : "-"}\n` +
               `✅ 价格 > MA${cfg.ma3}  ✅ MA${cfg.ma1} > MA${cfg.ma2}`;
 
             sendDingTalkAlert(msg).catch((e) =>
@@ -183,30 +195,51 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
     [assetType]
   );
 
-  const runChecks = useCallback(
-    (cfg: GoldenCrossConfig) => {
-      for (const sym of symbols) {
-        if (sym.currentPrice != null) {
-          checkSymbol(sym, cfg);
-        }
-      }
+  const startTimer = useCallback(
+    (sym: MonitoredSymbol, cfg: GoldenCrossConfig) => {
+      const key = sym.symbol;
+      if (timersRef.current[key]) clearInterval(timersRef.current[key]);
+      checkSymbol(sym, cfg);
+      timersRef.current[key] = setInterval(() => checkSymbol(sym, cfg), 30_000);
     },
-    [symbols, checkSymbol]
+    [checkSymbol]
   );
 
+  const stopTimer = useCallback((symbol: string) => {
+    if (timersRef.current[symbol]) {
+      clearInterval(timersRef.current[symbol]);
+      delete timersRef.current[symbol];
+    }
+  }, []);
+
   useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (!config.enabled) return;
-
-    runChecks(config);
-    timerRef.current = setInterval(() => runChecks(config), 30_000);
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      Object.values(timersRef.current).forEach(clearInterval);
     };
-  }, [config, runChecks]);
+  }, []);
 
-  const handleApply = () => {
-    setConfig({ ...editConfig });
+  useEffect(() => {
+    for (const sym of symbols) {
+      const cfg = configs[sym.symbol];
+      if (!cfg) continue;
+      if (cfg.enabled && sym.currentPrice != null) {
+        startTimer(sym, cfg);
+      } else if (!cfg.enabled) {
+        stopTimer(sym.symbol);
+      }
+    }
+  }, [configs, symbols, startTimer, stopTimer]);
+
+  const handleApply = (sym: MonitoredSymbol) => {
+    const newCfg = getEditConfig(sym.symbol);
+    setConfigs((prev) => ({ ...prev, [sym.symbol]: newCfg }));
+  };
+
+  const handleToggle = (sym: MonitoredSymbol, enabled: boolean) => {
+    const current = getConfig(sym.symbol);
+    const updated = { ...current, enabled };
+    setConfigs((prev) => ({ ...prev, [sym.symbol]: updated }));
+    setEditConfigs((prev) => ({ ...prev, [sym.symbol]: updated }));
   };
 
   const handleTestSend = async () => {
@@ -235,232 +268,232 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
   const activeSymbols = symbols.filter((s) => s.currentPrice != null);
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5 space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <div className="font-semibold text-base">金叉信号监控</div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            条件：价格 {">"} MA{editConfig.ma3} 且 MA{editConfig.ma1} {">"} MA
-            {editConfig.ma2}，首次出现推送钉钉
+            每个标的独立配置：K线周期、均线参数、启停
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Label className="text-sm">启用</Label>
-          <Switch
-            checked={config.enabled}
-            onCheckedChange={(v) => setConfig((c) => ({ ...c, enabled: v }))}
-          />
-        </div>
-      </div>
-
-      <Separator />
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <div className="space-y-1.5">
-          <Label className="text-xs">K线周期</Label>
-          <select
-            className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-            value={editConfig.interval}
-            onChange={(e) =>
-              setEditConfig((c) => ({ ...c, interval: e.target.value }))
-            }
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleTestSend}
+            disabled={testStatus === "sending"}
           >
-            {intervals.map((i) => (
-              <option key={i} value={i}>
-                {i}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">均线类型</Label>
-          <select
-            className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-            value={editConfig.maType}
-            onChange={(e) =>
-              setEditConfig((c) => ({ ...c, maType: e.target.value as MAType }))
-            }
-          >
-            {MA_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">短期均线周期</Label>
-          <Input
-            type="number"
-            min={1}
-            max={500}
-            value={editConfig.ma1}
-            onChange={(e) =>
-              setEditConfig((c) => ({
-                ...c,
-                ma1: Math.max(1, parseInt(e.target.value) || 7),
-              }))
-            }
-            className="text-sm"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">中期均线周期</Label>
-          <Input
-            type="number"
-            min={1}
-            max={500}
-            value={editConfig.ma2}
-            onChange={(e) =>
-              setEditConfig((c) => ({
-                ...c,
-                ma2: Math.max(1, parseInt(e.target.value) || 25),
-              }))
-            }
-            className="text-sm"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">长期均线周期</Label>
-          <Input
-            type="number"
-            min={1}
-            max={500}
-            value={editConfig.ma3}
-            onChange={(e) =>
-              setEditConfig((c) => ({
-                ...c,
-                ma3: Math.max(1, parseInt(e.target.value) || 99),
-              }))
-            }
-            className="text-sm"
-          />
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3 flex-wrap">
-        <Button size="sm" onClick={handleApply}>
-          应用配置
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleTestSend}
-          disabled={testStatus === "sending"}
-        >
-          {testStatus === "sending" ? "发送中..." : "📡 测试钉钉连通性"}
-        </Button>
-        {testStatus !== "idle" && (
-          <span
-            className={`text-xs font-medium ${
-              testStatus === "ok" ? "text-green-600" : "text-red-500"
-            }`}
-          >
-            {testMsg}
-          </span>
-        )}
-      </div>
-
-      {config.enabled && (
-        <>
-          <Separator />
-          {activeSymbols.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-2">
-              没有正在追踪的标的，请先在上方添加代码
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="text-xs text-muted-foreground">
-                每 30 秒自动检查 · 当前配置：{config.maType} MA{config.ma1} /
-                MA{config.ma2} / MA{config.ma3} · 周期 {config.interval}
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {activeSymbols.map((sym) => {
-                  const st = states[sym.symbol];
-                  return (
-                    <div
-                      key={sym.symbol}
-                      className={`rounded-lg border p-3 transition-colors ${
-                        st?.isGolden
-                          ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30"
-                          : "border-border"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="font-semibold text-sm">{sym.displayName}</div>
-                        {st?.loading && (
-                          <span className="text-xs text-muted-foreground animate-pulse">
-                            计算中...
-                          </span>
-                        )}
-                        {!st?.loading && st?.isGolden && (
-                          <Badge className="bg-yellow-500 text-white text-xs">
-                            ✨ 金叉
-                          </Badge>
-                        )}
-                        {!st?.loading && st && !st.isGolden && st.lastCheck && (
-                          <Badge variant="secondary" className="text-xs">
-                            未成立
-                          </Badge>
-                        )}
-                      </div>
-
-                      {st?.error ? (
-                        <div className="text-xs text-red-500">{st.error}</div>
-                      ) : (
-                        <div className="space-y-1 text-xs">
-                          <div className="grid grid-cols-2 gap-x-3">
-                            <span className="text-muted-foreground">
-                              {config.maType} {config.ma1}
-                            </span>
-                            <span className="font-mono">{fmtVal(st?.ma1Val ?? null)}</span>
-                            <span className="text-muted-foreground">
-                              {config.maType} {config.ma2}
-                            </span>
-                            <span className="font-mono">{fmtVal(st?.ma2Val ?? null)}</span>
-                            <span className="text-muted-foreground">
-                              {config.maType} {config.ma3}
-                            </span>
-                            <span className="font-mono">{fmtVal(st?.ma3Val ?? null)}</span>
-                          </div>
-                          <div className="pt-1 space-y-0.5">
-                            <ConditionRow
-                              label={`价格 > ${config.maType}${config.ma3}`}
-                              ok={
-                                st?.ma3Val != null &&
-                                sym.currentPrice != null &&
-                                sym.currentPrice > st.ma3Val
-                              }
-                            />
-                            <ConditionRow
-                              label={`${config.maType}${config.ma1} > ${config.maType}${config.ma2}`}
-                              ok={
-                                st?.ma1Val != null &&
-                                st?.ma2Val != null &&
-                                st.ma1Val > st.ma2Val
-                              }
-                            />
-                          </div>
-                          {st?.lastCheck && (
-                            <div className="text-muted-foreground pt-1">
-                              {st.lastCheck.toLocaleTimeString("zh-CN")}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            {testStatus === "sending" ? "发送中..." : "📡 测试钉钉连通性"}
+          </Button>
+          {testStatus !== "idle" && (
+            <span
+              className={`text-xs font-medium ${
+                testStatus === "ok" ? "text-green-600" : "text-red-500"
+              }`}
+            >
+              {testMsg}
+            </span>
           )}
-        </>
+        </div>
+      </div>
+
+      {activeSymbols.length === 0 ? (
+        <div className="text-sm text-muted-foreground py-2">
+          没有正在追踪的标的，请先在上方添加代码
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {activeSymbols.map((sym) => {
+            const cfg = getConfig(sym.symbol);
+            const edit = getEditConfig(sym.symbol);
+            const st = states[sym.symbol];
+            const isExpanded = expanded[sym.symbol] ?? false;
+
+            return (
+              <div
+                key={sym.symbol}
+                className={`rounded-lg border p-3 space-y-2 transition-colors ${
+                  cfg.enabled && st?.isGolden
+                    ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30"
+                    : "border-border"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-sm truncate">
+                      {sym.displayName}
+                    </div>
+                    <div className="text-xs text-muted-foreground">{sym.symbol}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {cfg.enabled && st?.loading && (
+                      <span className="text-xs text-muted-foreground animate-pulse">
+                        检查中
+                      </span>
+                    )}
+                    {cfg.enabled && !st?.loading && st?.isGolden && (
+                      <Badge className="bg-yellow-500 text-white text-xs">✨ 金叉</Badge>
+                    )}
+                    {cfg.enabled && !st?.loading && st && !st.isGolden && st.lastCheck && (
+                      <Badge variant="secondary" className="text-xs">未成立</Badge>
+                    )}
+                    <Switch
+                      checked={cfg.enabled}
+                      onCheckedChange={(v) => handleToggle(sym, v)}
+                    />
+                  </div>
+                </div>
+
+                {cfg.enabled && st && !st.error && st.lastCheck && (
+                  <div className="space-y-1 text-xs">
+                    <Separator />
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                      <span className="text-muted-foreground">{cfg.maType}{cfg.ma1}</span>
+                      <span className="font-mono">{fmtVal(st.ma1Val)}</span>
+                      <span className="text-muted-foreground">{cfg.maType}{cfg.ma2}</span>
+                      <span className="font-mono">{fmtVal(st.ma2Val)}</span>
+                      <span className="text-muted-foreground">{cfg.maType}{cfg.ma3}</span>
+                      <span className="font-mono">{fmtVal(st.ma3Val)}</span>
+                    </div>
+                    <div className="space-y-0.5 pt-0.5">
+                      <ConditionRow
+                        label={`价格 > ${cfg.maType}${cfg.ma3}`}
+                        ok={
+                          st.ma3Val != null &&
+                          sym.currentPrice != null &&
+                          sym.currentPrice > st.ma3Val
+                        }
+                      />
+                      <ConditionRow
+                        label={`${cfg.maType}${cfg.ma1} > ${cfg.maType}${cfg.ma2}`}
+                        ok={st.ma1Val != null && st.ma2Val != null && st.ma1Val > st.ma2Val}
+                      />
+                    </div>
+                    <div className="text-muted-foreground">
+                      {st.lastCheck.toLocaleTimeString("zh-CN")} · {cfg.interval} · {cfg.maType}
+                    </div>
+                  </div>
+                )}
+
+                {cfg.enabled && st?.error && (
+                  <div className="text-xs text-red-500">{st.error}</div>
+                )}
+
+                <div>
+                  <button
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() =>
+                      setExpanded((prev) => ({ ...prev, [sym.symbol]: !isExpanded }))
+                    }
+                  >
+                    {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    参数配置
+                  </button>
+
+                  {isExpanded && (
+                    <div className="mt-2 space-y-2">
+                      <Separator />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs">K线周期</Label>
+                          <select
+                            className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs"
+                            value={edit.interval}
+                            onChange={(e) =>
+                              setEditField(sym.symbol, { interval: e.target.value })
+                            }
+                          >
+                            {intervals.map((i) => (
+                              <option key={i} value={i}>{i}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">均线类型</Label>
+                          <select
+                            className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs"
+                            value={edit.maType}
+                            onChange={(e) =>
+                              setEditField(sym.symbol, { maType: e.target.value as MAType })
+                            }
+                          >
+                            {MA_TYPES.map((t) => (
+                              <option key={t} value={t}>{t}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">短期（MA{edit.ma1}）</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={500}
+                            value={edit.ma1}
+                            onChange={(e) =>
+                              setEditField(sym.symbol, {
+                                ma1: Math.max(1, parseInt(e.target.value) || 7),
+                              })
+                            }
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">中期（MA{edit.ma2}）</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={500}
+                            value={edit.ma2}
+                            onChange={(e) =>
+                              setEditField(sym.symbol, {
+                                ma2: Math.max(1, parseInt(e.target.value) || 25),
+                              })
+                            }
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                        <div className="col-span-2 space-y-1">
+                          <Label className="text-xs">长期（MA{edit.ma3}）</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={500}
+                            value={edit.ma3}
+                            onChange={(e) =>
+                              setEditField(sym.symbol, {
+                                ma3: Math.max(1, parseInt(e.target.value) || 99),
+                              })
+                            }
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="w-full h-8 text-xs"
+                        onClick={() => handleApply(sym)}
+                      >
+                        应用配置
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
 }
 
-function ConditionRow({ label, ok }: { label: string; ok: boolean | null | undefined }) {
+function ConditionRow({
+  label,
+  ok,
+}: {
+  label: string;
+  ok: boolean | null | undefined;
+}) {
   if (ok == null) return null;
   return (
     <div className="flex items-center gap-1.5">
