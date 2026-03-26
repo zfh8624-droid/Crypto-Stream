@@ -13,7 +13,9 @@ async function sendDingTalk(content: string) {
     body: JSON.stringify({ msgtype: "text", text: { content } }),
   });
   if (!res.ok) throw new Error(`DingTalk API error: ${res.status}`);
-  return (await res.json()) as Record<string, unknown>;
+  const data = (await res.json()) as { errcode: number; errmsg: string };
+  if (data.errcode !== 0) throw new Error(`钉钉返回错误：${data.errmsg}（errcode=${data.errcode}）`);
+  return data;
 }
 
 router.post("/notify/send", async (req, res) => {
@@ -34,12 +36,13 @@ router.post("/notify/send", async (req, res) => {
 router.post("/notify/test", async (_req, res) => {
   try {
     const result = await sendDingTalk(
-      "🔧 连通性测试\n\n这是来自【实时价格追踪器】的测试消息，钉钉机器人连接正常！"
+      "🔧 连通性测试信号\n\n这是来自【实时价格追踪器】的测试消息，钉钉机器人连接正常！"
     );
     res.json({ success: true, result });
   } catch (err) {
     logger.error({ err }, "DingTalk test failed");
-    res.status(500).json({ success: false, error: String(err) });
+    const msg = err instanceof Error ? err.message : String(err);
+    res.json({ success: false, error: msg });
   }
 });
 
