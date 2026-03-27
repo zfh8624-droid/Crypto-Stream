@@ -2,6 +2,7 @@ import { createServer } from "http";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { setupAShareWS } from "./ashare-ws";
+import { setupBinanceWS } from "./binance-ws";
 
 const rawPort = process.env["PORT"];
 
@@ -20,6 +21,7 @@ if (Number.isNaN(port) || port <= 0) {
 const server = createServer(app);
 
 setupAShareWS(server);
+setupBinanceWS(server);
 
 server.listen(port, (err?: Error) => {
   if (err) {

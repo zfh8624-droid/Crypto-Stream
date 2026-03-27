@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useWebSocket, WSStatus } from "./useWebSocket";
 
 export interface PriceEntry {
@@ -27,31 +27,25 @@ export interface StockConfig {
 
 export type TrackerConfig = CryptoConfig | StockConfig;
 
+function getBackendWSUrl(): string {
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}/api/binance`;
+}
+
 export function useBinanceTracker(config: CryptoConfig) {
   const [prices, setPrices] = useState<Record<string, PriceEntry>>({});
   const flashTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const sendRef = useRef<((data: unknown) => void) | null>(null);
+  const binanceWsUrlRef = useRef(config.wsUrl);
 
   const symbolsKey = config.symbols.sort().join(",");
 
-  const onMessage = useCallback((data: unknown) => {
-    const msg = data as Record<string, unknown>;
-
-    if (Array.isArray(data)) {
-      for (const item of data) {
-        handleTicker(item as Record<string, unknown>);
-      }
-      return;
+  useEffect(() => {
+    if (binanceWsUrlRef.current !== config.wsUrl && sendRef.current) {
+      binanceWsUrlRef.current = config.wsUrl;
+      sendRef.current({ type: "set_ws_url", wsUrl: config.wsUrl });
     }
-
-    if (msg.stream && msg.data) {
-      handleTicker(msg.data as Record<string, unknown>);
-      return;
-    }
-
-    if (msg.e === "24hrTicker") {
-      handleTicker(msg);
-    }
-  }, []);
+  }, [config.wsUrl]);
 
   const handleTicker = (msg: Record<string, unknown>) => {
     const symbol = (msg.s as string)?.replace("USDT", "") ?? "";
@@ -97,18 +91,36 @@ export function useBinanceTracker(config: CryptoConfig) {
     });
   };
 
-  const buildUrl = useCallback(() => {
-    if (!config.symbols.length) return null;
-    const streams = config.symbols
-      .map((s) => `${s.toLowerCase()}usdt@ticker`)
-      .join("/");
-    return `${config.wsUrl}/stream?streams=${streams}`;
-  }, [config.wsUrl, symbolsKey]);
+  const onMessage = useCallback((data: unknown) => {
+    handleTicker(data as Record<string, unknown>);
+  }, []);
 
-  const wsUrl = buildUrl();
-  const { status } = useWebSocket(wsUrl, { onMessage });
+  const onOpen = useCallback(() => {
+    if (sendRef.current) {
+      sendRef.current({ type: "set_ws_url", wsUrl: config.wsUrl });
+      if (config.symbols.length > 0) {
+        sendRef.current({ type: "subscribe", symbols: config.symbols });
+      }
+    }
+  }, [symbolsKey, config.wsUrl]);
 
-  return { prices, status };
+  const wsUrl = getBackendWSUrl();
+  const { status, send } = useWebSocket(wsUrl, { onMessage, onOpen, heartbeatMs: 60000 });
+  sendRef.current = send;
+
+  const subscribe = useCallback((symbols: string[]) => {
+    if (sendRef.current) {
+      sendRef.current({ type: "subscribe", symbols });
+    }
+  }, []);
+
+  const unsubscribe = useCallback((symbols: string[]) => {
+    if (sendRef.current) {
+      sendRef.current({ type: "unsubscribe", symbols });
+    }
+  }, []);
+
+  return { prices, status, subscribe, unsubscribe };
 }
 
 export function useFinnhubTracker(config: StockConfig) {
@@ -179,7 +191,7 @@ export function useFinnhubTracker(config: StockConfig) {
     ? `${config.wsUrl}?token=${config.token}`
     : null;
 
-  const { status, send } = useWebSocket(wsUrlWithToken, { onMessage, onOpen });
+  const { status, send } = useWebSocket(wsUrlWithToken, { onMessage, onOpen, heartbeatMs: 60000 });
   sendRef.current = send;
 
   return { prices, status };

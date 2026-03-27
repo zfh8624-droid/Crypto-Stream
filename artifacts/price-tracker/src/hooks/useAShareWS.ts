@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { WSStatus } from "./useWebSocket";
+import { useWebSocket, WSStatus } from "./useWebSocket";
 
 export interface AShareQuote {
   code: string;
@@ -25,110 +25,73 @@ function getBackendWSUrl(): string {
 export function useAShareTracker(symbols: string[]) {
   const [prices, setPrices] = useState<Record<string, AShareQuote>>({});
   const [status, setStatus] = useState<WSStatus>("disconnected");
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const sendRef = useRef<((data: unknown) => void) | null>(null);
   const symbolsRef = useRef(symbols);
   symbolsRef.current = symbols;
-  const isConnecting = useRef(false);
 
-  const connect = useCallback(() => {
-    if (isConnecting.current) return;
-    isConnecting.current = true;
-
-    if (wsRef.current) {
-      wsRef.current.onclose = null;
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-    if (reconnectRef.current) {
-      clearTimeout(reconnectRef.current);
-      reconnectRef.current = null;
-    }
-
-    setStatus("connecting");
-    const url = getBackendWSUrl();
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      isConnecting.current = false;
-      setStatus("connected");
-      if (symbolsRef.current.length > 0) {
-        ws.send(JSON.stringify({ type: "subscribe", codes: symbolsRef.current }));
-      }
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data) as { type: string; data?: AShareQuote[] };
-        if (msg.type === "quotes" && Array.isArray(msg.data)) {
-          setPrices((prev) => {
-            const next = { ...prev };
-            for (const q of msg.data!) {
-              const old = prev[q.code];
-              const flash =
-                old?.price != null
-                  ? q.price > old.price ? "up" : q.price < old.price ? "down" : null
-                  : null;
-              if (flash && flashTimers.current[q.code]) clearTimeout(flashTimers.current[q.code]);
-              next[q.code] = { ...q, flash };
-              if (flash) {
-                flashTimers.current[q.code] = setTimeout(() => {
-                  setPrices((p) => ({ ...p, [q.code]: { ...p[q.code], flash: null } }));
-                }, 800);
-              }
-            }
-            return next;
-          });
+  const handleQuotes = useCallback((msg: { type: string; data?: AShareQuote[] }) => {
+    if (msg.type === "quotes" && Array.isArray(msg.data)) {
+      setPrices((prev) => {
+        const next = { ...prev };
+        for (const q of msg.data!) {
+          const old = prev[q.code];
+          const flash =
+            old?.price != null
+              ? q.price > old.price ? "up" : q.price < old.price ? "down" : null
+              : null;
+          if (flash && flashTimers.current[q.code]) clearTimeout(flashTimers.current[q.code]);
+          next[q.code] = { ...q, flash };
+          if (flash) {
+            flashTimers.current[q.code] = setTimeout(() => {
+              setPrices((p) => ({ ...p, [q.code]: { ...p[q.code], flash: null } }));
+            }, 800);
+          }
         }
-      } catch {
-        // ignore parse errors
-      }
-    };
-
-    ws.onerror = () => {
-      isConnecting.current = false;
-      setStatus("error");
-    };
-
-    ws.onclose = () => {
-      isConnecting.current = false;
-      setStatus("disconnected");
-      reconnectRef.current = setTimeout(() => connect(), 3000);
-    };
+        return next;
+      });
+    }
   }, []);
 
+  const onMessage = useCallback((data: unknown) => {
+    handleQuotes(data as { type: string; data?: AShareQuote[] });
+  }, [handleQuotes]);
+
+  const onOpen = useCallback(() => {
+    if (sendRef.current && symbolsRef.current.length > 0) {
+      sendRef.current({ type: "subscribe", codes: symbolsRef.current });
+    }
+  }, []);
+
+  const wsUrl = getBackendWSUrl();
+  const { status: wsStatus, send } = useWebSocket(wsUrl, { 
+    onMessage, 
+    onOpen, 
+    heartbeatMs: 60000 
+  });
+  sendRef.current = send;
+
   useEffect(() => {
-    connect();
-    return () => {
-      isConnecting.current = false;
-      if (reconnectRef.current) clearTimeout(reconnectRef.current);
-      if (wsRef.current) {
-        wsRef.current.onclose = null;
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
-  }, [connect]);
+    setStatus(wsStatus);
+  }, [wsStatus]);
 
   const subscribe = useCallback((codes: string[]) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "subscribe", codes }));
+    if (sendRef.current) {
+      sendRef.current({ type: "subscribe", codes });
     }
   }, []);
 
   const unsubscribe = useCallback((codes: string[]) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "unsubscribe", codes }));
+    if (sendRef.current) {
+      sendRef.current({ type: "unsubscribe", codes });
     }
   }, []);
 
   useEffect(() => {
-    if (status === "connected" && symbols.length > 0) {
+    if (wsStatus === "connected" && symbols.length > 0) {
       subscribe(symbols);
     }
-  }, [symbols.join(","), status, subscribe]);
+  }, [symbols.join(","), wsStatus, subscribe]);
 
   return { prices, status, subscribe, unsubscribe };
 }

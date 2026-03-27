@@ -18,6 +18,7 @@ export interface MonitoredSymbol {
 
 type Side = "price" | "ma1" | "ma2" | "ma3";
 type Op = ">" | "<" | "=";
+type SignalType = "golden" | "death";
 
 interface Condition {
   id: string;
@@ -34,7 +35,10 @@ interface SymbolConfig {
   ma2Period: number;
   ma3Period: number;
   conditions: Condition[];
+  signalType: SignalType;
 }
+
+type TrendStatus = "bullish" | "bearish" | "neutral";
 
 interface SymbolRuntime {
   ma1Val: number | null;
@@ -46,6 +50,9 @@ interface SymbolRuntime {
   lastCheck: Date | null;
   error: string | null;
   loading: boolean;
+  prevMa1GtMa2: boolean | null; // 上一次MA1是否大于MA2，用于检测交叉
+  hasSentSignal: boolean; // 是否已发送过信号，防止重复发送
+  trendStatus: TrendStatus; // 趋势状态：多头/空头/中性
 }
 
 interface ClosesCache {
@@ -73,15 +80,30 @@ const DEFAULT_CONDITIONS: Condition[] = [
   { id: "c2", left: "ma1", op: ">", right: "ma2" },
 ];
 
-const DEFAULT_CONFIG: SymbolConfig = {
-  enabled: false,
-  interval: "1h",
-  maType: "SMA",
-  ma1Period: 7,
-  ma2Period: 25,
-  ma3Period: 99,
-  conditions: DEFAULT_CONDITIONS,
-};
+function getDefaultConfig(assetType: AssetType): SymbolConfig {
+  if (assetType === "ashare") {
+    return {
+      enabled: false,
+      interval: "1d",
+      maType: "SMA",
+      ma1Period: 5,
+      ma2Period: 10,
+      ma3Period: 20,
+      conditions: DEFAULT_CONDITIONS,
+      signalType: "golden",
+    };
+  }
+  return {
+    enabled: false,
+    interval: "4h",
+    maType: "SMA",
+    ma1Period: 7,
+    ma2Period: 25,
+    ma3Period: 60,
+    conditions: DEFAULT_CONDITIONS,
+    signalType: "golden",
+  };
+}
 
 const CACHE_TTL = 5 * 60 * 1000;
 
@@ -89,24 +111,112 @@ function storageKey(assetType: AssetType, symbol: string) {
   return `gc_v2_${assetType}_${symbol}`;
 }
 
+function runtimeStorageKey(assetType: AssetType, symbol: string) {
+  return `gc_rt_${assetType}_${symbol}`;
+}
+
+interface PersistedRuntime {
+  inSignal: boolean;
+  lastSignalAt: number;
+  hasSentSignal: boolean; // 是否已发送过信号
+  trendStatus: TrendStatus; // 趋势状态
+  ma1Val: number | null;
+  ma2Val: number | null;
+  ma3Val: number | null;
+  condResults: boolean[];
+  isGolden: boolean;
+  prevMa1GtMa2: boolean | null;
+}
+
 function loadConfig(assetType: AssetType, symbol: string): SymbolConfig {
   try {
-    const raw = localStorage.getItem(storageKey(assetType, symbol));
-    if (!raw) return { ...DEFAULT_CONFIG };
-    const p = JSON.parse(raw) as SymbolConfig;
-    if (!Array.isArray(p.conditions) || p.conditions.length === 0) {
-      p.conditions = [...DEFAULT_CONDITIONS];
+    const key = storageKey(assetType, symbol);
+    const raw = localStorage.getItem(key);
+    console.log(`[loadConfig] Loading ${key}, raw:`, raw);
+    const defaultConfig = getDefaultConfig(assetType);
+    if (!raw) {
+      console.log(`[loadConfig] No data found, returning default for ${assetType}`);
+      return { ...defaultConfig };
     }
-    return p;
-  } catch {
-    return { ...DEFAULT_CONFIG };
+    const p = JSON.parse(raw) as Partial<SymbolConfig>;
+    
+    const result = {
+      ...defaultConfig,
+      ...p,
+      conditions: Array.isArray(p.conditions) && p.conditions.length > 0 ? p.conditions : [...DEFAULT_CONDITIONS],
+    };
+    console.log(`[loadConfig] Loaded result:`, result);
+    return result;
+  } catch (err) {
+    console.error(`[loadConfig] Error:`, err);
+    return getDefaultConfig(assetType);
   }
 }
 
 function saveConfig(assetType: AssetType, symbol: string, cfg: SymbolConfig) {
   try {
-    localStorage.setItem(storageKey(assetType, symbol), JSON.stringify(cfg));
-  } catch { }
+    const key = storageKey(assetType, symbol);
+    console.log(`[saveConfig] Saving ${key}:`, cfg);
+    localStorage.setItem(key, JSON.stringify(cfg));
+    console.log(`[saveConfig] Saved successfully`);
+  } catch (err) {
+    console.error(`[saveConfig] Error:`, err);
+  }
+}
+
+function loadRuntime(assetType: AssetType, symbol: string): PersistedRuntime {
+  try {
+    const key = runtimeStorageKey(assetType, symbol);
+    const raw = localStorage.getItem(key);
+    if (!raw) return { 
+      inSignal: false, 
+      lastSignalAt: 0, 
+      hasSentSignal: false, 
+      trendStatus: "neutral",
+      ma1Val: null,
+      ma2Val: null,
+      ma3Val: null,
+      condResults: [],
+      isGolden: false,
+      prevMa1GtMa2: null,
+    };
+    const loaded = JSON.parse(raw) as PersistedRuntime;
+    // 向后兼容处理
+    return {
+      inSignal: loaded.inSignal ?? false,
+      lastSignalAt: loaded.lastSignalAt ?? 0,
+      hasSentSignal: loaded.hasSentSignal ?? false,
+      trendStatus: loaded.trendStatus ?? "neutral",
+      ma1Val: loaded.ma1Val ?? null,
+      ma2Val: loaded.ma2Val ?? null,
+      ma3Val: loaded.ma3Val ?? null,
+      condResults: loaded.condResults ?? [],
+      isGolden: loaded.isGolden ?? false,
+      prevMa1GtMa2: loaded.prevMa1GtMa2 ?? null,
+    };
+  } catch {
+    return { 
+      inSignal: false, 
+      lastSignalAt: 0, 
+      hasSentSignal: false, 
+      trendStatus: "neutral",
+      ma1Val: null,
+      ma2Val: null,
+      ma3Val: null,
+      condResults: [],
+      isGolden: false,
+      prevMa1GtMa2: null,
+    };
+  }
+}
+
+function saveRuntime(assetType: AssetType, symbol: string, rt: PersistedRuntime) {
+  try {
+    const key = runtimeStorageKey(assetType, symbol);
+    localStorage.setItem(key, JSON.stringify(rt));
+  } catch {
+    // ignore
+  }
 }
 
 async function apiFetchCloses(
@@ -128,11 +238,11 @@ async function apiFetchCloses(
   return json.closes;
 }
 
-async function sendAlert(content: string) {
+async function sendAlert(content: string, webhookUrl: string) {
   await fetch("/api/notify/send", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, webhookUrl }),
   });
 }
 
@@ -187,10 +297,15 @@ function calcMAsFromCloses(
   };
 }
 
-function fmtVal(v: number | null): string {
+function fmtVal(v: number | null, withCurrency: boolean = false, isCNY: boolean = false): string {
   if (v == null) return "-";
-  if (v === 0) return "0";
-  return v < 1 ? v.toFixed(6) : v < 100 ? v.toFixed(4) : v.toFixed(2);
+  if (v === 0) {
+    if (!withCurrency) return "0";
+    return isCNY ? "￥0" : "$0";
+  }
+  const formatted = v < 1 ? v.toFixed(6) : v < 100 ? v.toFixed(4) : v.toFixed(2);
+  if (!withCurrency) return formatted;
+  return isCNY ? `￥${formatted}` : `$${formatted}`;
 }
 
 function NumInput({
@@ -297,14 +412,54 @@ interface Props {
   symbols: MonitoredSymbol[];
 }
 
+function usePersistedState<T>(
+  key: string,
+  defaultValue: T
+): [T, React.Dispatch<React.SetStateAction<T>>] {
+  const [state, setState] = useState<T>(() => {
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        return JSON.parse(stored) as T;
+      }
+    } catch {
+      // ignore
+    }
+    return defaultValue;
+  });
+
+  const setPersistedState: React.Dispatch<React.SetStateAction<T>> = useCallback(
+    (value) => {
+      setState((prev) => {
+        const next = typeof value === "function" ? (value as (prev: T) => T)(prev) : value;
+        try {
+          localStorage.setItem(key, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+    },
+    [key]
+  );
+
+  return [state, setPersistedState];
+}
+
 export function GoldenCrossMonitor({ assetType, symbols }: Props) {
   const intervals = assetType === "crypto" ? CRYPTO_INTERVALS : ASHARE_INTERVALS;
+  const isCrypto = assetType === "crypto";
+  const isCNY = assetType === "ashare";
 
   const [configs, setConfigs] = useState<Record<string, SymbolConfig>>({});
   const [runtimes, setRuntimes] = useState<Record<string, SymbolRuntime>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [testStatus, setTestStatus] = useState<"idle" | "sending" | "ok" | "err">("idle");
   const [testMsg, setTestMsg] = useState("");
+  const [dingtalkWebhook, setDingtalkWebhook] = usePersistedState<string>(
+    "dingtalk_webhook",
+    "https://oapi.dingtalk.com/robot/send?access_token=a5214afa0698ca62e74ad87dc1053ac151fb04caee08ae044d053bca883dce97"
+  );
 
   const closesCache = useRef<Record<string, ClosesCache>>({});
   const refreshTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({});
@@ -328,6 +483,29 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
     });
   }, [symbols.map((s) => s.symbol).join(","), assetType]);
 
+  // 初始化运行时状态，从 localStorage 恢复数据
+  useEffect(() => {
+    const initialRuntimes: Record<string, SymbolRuntime> = {};
+    for (const sym of symbols) {
+      const persistedRt = loadRuntime(assetType, sym.symbol);
+      initialRuntimes[sym.symbol] = {
+        ma1Val: persistedRt.ma1Val,
+        ma2Val: persistedRt.ma2Val,
+        ma3Val: persistedRt.ma3Val,
+        condResults: persistedRt.condResults,
+        isGolden: persistedRt.isGolden,
+        inSignal: persistedRt.inSignal,
+        lastCheck: null,
+        error: null,
+        loading: false,
+        prevMa1GtMa2: persistedRt.prevMa1GtMa2,
+        hasSentSignal: persistedRt.hasSentSignal,
+        trendStatus: persistedRt.trendStatus,
+      };
+    }
+    setRuntimes(initialRuntimes);
+  }, [symbols.map((s) => s.symbol).join(","), assetType]);
+
   const updateRuntimeFromCloses = useCallback(
     (sym: MonitoredSymbol, cfg: SymbolConfig) => {
       const cached = closesCache.current[sym.symbol];
@@ -341,41 +519,117 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
 
       setRuntimes((prev) => {
         const prevRt = prev[sym.symbol];
-        const wasInSignal = prevRt?.inSignal ?? false;
-        const isNewSignal = isGolden && !wasInSignal;
+        const persistedRt = loadRuntime(assetType, sym.symbol);
+        
+        // 检测MA1和MA2的交叉
+        const ma1GtMa2 = ma1Val != null && ma2Val != null && ma1Val > ma2Val;
+        const prevMa1GtMa2 = prevRt?.prevMa1GtMa2 ?? persistedRt.prevMa1GtMa2;
+        const hasSentSignal = prevRt?.hasSentSignal ?? persistedRt.hasSentSignal;
+        
+        // 检测是否发生了真正的交叉
+        let hasSignalCross = false; // 信号方向的交叉（金叉或死叉）
+        let hasResetCross = false; // 重置方向的交叉（反向交叉）
+        
+        if (prevMa1GtMa2 != null && ma1Val != null && ma2Val != null) {
+          if (cfg.signalType === "golden") {
+            // 金叉：MA1从下往上穿过MA2（prevMa1GtMa2=false, 当前=true）
+            hasSignalCross = !prevMa1GtMa2 && ma1GtMa2;
+            // 重置交叉：MA1从上往下穿过MA2（prevMa1GtMa2=true, 当前=false）- 死叉
+            hasResetCross = prevMa1GtMa2 && !ma1GtMa2;
+          } else {
+            // 死叉：MA1从上往下穿过MA2（prevMa1GtMa2=true, 当前=false）
+            hasSignalCross = prevMa1GtMa2 && !ma1GtMa2;
+            // 重置交叉：MA1从下往上穿过MA2（prevMa1GtMa2=false, 当前=true）- 金叉
+            hasResetCross = !prevMa1GtMa2 && ma1GtMa2;
+          }
+        }
+
+        let newHasSentSignal = hasSentSignal;
+        let newTrendStatus: TrendStatus = prevRt?.trendStatus ?? persistedRt.trendStatus;
+        
+        // 根据MA1和MA2的关系判断趋势状态
+        if (ma1Val != null && ma2Val != null) {
+          if (ma1GtMa2) {
+            newTrendStatus = "bullish"; // 多头趋势
+          } else {
+            newTrendStatus = "bearish"; // 空头趋势
+          }
+        }
+        
+        // 如果发生了重置交叉，重置信号发送状态
+        if (hasResetCross) {
+          newHasSentSignal = false;
+        }
+        
+        // 只有在发生信号交叉、所有条件满足，且还没有发送过信号时，才发送新信号
+        const isNewSignal = hasSignalCross && isGolden && !newHasSentSignal;
+
+        const runtimeData: PersistedRuntime = {
+          inSignal: isGolden,
+          lastSignalAt: isNewSignal ? Date.now() : persistedRt.lastSignalAt,
+          hasSentSignal: newHasSentSignal,
+          trendStatus: newTrendStatus,
+          ma1Val,
+          ma2Val,
+          ma3Val,
+          condResults,
+          isGolden,
+          prevMa1GtMa2: ma1GtMa2,
+        };
 
         if (isNewSignal) {
+          const signalLabel = cfg.signalType === "golden" ? "金叉" : "死叉";
+          const now = new Date();
+          const timeStr = now.toLocaleString("zh-CN", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false
+          });
           const msg =
-            `🔔 金叉信号！\n` +
+            `🔔 ${signalLabel}信号！\n` +
+            `触发时间：${timeStr}\n` +
             `标的：${sym.displayName}（${sym.symbol}）\n` +
             `周期：${cfg.interval}  均线类型：${cfg.maType}\n` +
-            `当前价：${fmtVal(sym.currentPrice)}\n` +
-            `MA${cfg.ma1Period}（短）：${fmtVal(ma1Val)}\n` +
-            `MA${cfg.ma2Period}（中）：${fmtVal(ma2Val)}\n` +
-            `MA${cfg.ma3Period}（长）：${fmtVal(ma3Val)}\n` +
+            `当前价：${fmtVal(sym.currentPrice, true, isCNY)}\n` +
+            `MA${cfg.ma1Period}（短）：${fmtVal(ma1Val, true, isCNY)}\n` +
+            `MA${cfg.ma2Period}（中）：${fmtVal(ma2Val, true, isCNY)}\n` +
+            `MA${cfg.ma3Period}（长）：${fmtVal(ma3Val, true, isCNY)}\n` +
             cfg.conditions
               .map((c) => `${SIDE_LABELS[c.left]} ${c.op} ${SIDE_LABELS[c.right]}`)
               .join("，");
-          sendAlert(msg).catch((e) => console.error("钉钉推送失败", e));
+          sendAlert(msg, dingtalkWebhook).catch((e) => console.error("钉钉推送失败", e));
+          newHasSentSignal = true;
+          runtimeData.hasSentSignal = true;
+          saveRuntime(assetType, sym.symbol, runtimeData);
+        } else {
+          // 每次都保存状态，刷新页面后数据不丢失
+          saveRuntime(assetType, sym.symbol, runtimeData);
         }
 
         return {
           ...prev,
           [sym.symbol]: {
-            ma1Val,
-            ma2Val,
-            ma3Val,
-            condResults,
-            isGolden,
+            ma1Val: ma1Val ?? persistedRt.ma1Val,
+            ma2Val: ma2Val ?? persistedRt.ma2Val,
+            ma3Val: ma3Val ?? persistedRt.ma3Val,
+            condResults: condResults.length > 0 ? condResults : persistedRt.condResults,
+            isGolden: isGolden,
             inSignal: isGolden,
             lastCheck: new Date(),
             error: null,
             loading: false,
+            prevMa1GtMa2: ma1GtMa2, // 保存当前MA1和MA2的关系
+            hasSentSignal: newHasSentSignal, // 保存是否已发送信号的状态
+            trendStatus: newTrendStatus, // 趋势状态
           },
         };
       });
     },
-    []
+    [assetType, dingtalkWebhook, isCrypto, isCNY]
   );
 
   const fetchAndActivate = useCallback(
@@ -384,17 +638,28 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
 
       const maxPeriod = Math.max(cfg.ma1Period, cfg.ma2Period, cfg.ma3Period);
 
-      setRuntimes((prev) => ({
-        ...prev,
-        [sym.symbol]: {
-          ...(prev[sym.symbol] ?? {
-            ma1Val: null, ma2Val: null, ma3Val: null,
-            condResults: [], isGolden: false, inSignal: false, lastCheck: null,
-          }),
-          loading: true,
-          error: null,
-        } as SymbolRuntime,
-      }));
+      setRuntimes((prev) => {
+        const persistedRt = loadRuntime(assetType, sym.symbol);
+        return {
+          ...prev,
+          [sym.symbol]: {
+            ...(prev[sym.symbol] ?? {
+              ma1Val: persistedRt.ma1Val,
+              ma2Val: persistedRt.ma2Val,
+              ma3Val: persistedRt.ma3Val,
+              condResults: persistedRt.condResults,
+              isGolden: persistedRt.isGolden,
+              inSignal: persistedRt.inSignal,
+              lastCheck: null,
+              prevMa1GtMa2: persistedRt.prevMa1GtMa2,
+              hasSentSignal: persistedRt.hasSentSignal,
+              trendStatus: persistedRt.trendStatus,
+            }),
+            loading: true,
+            error: null,
+          } as SymbolRuntime,
+        };
+      });
 
       try {
         const closes = await apiFetchCloses(sym.symbol, cfg.interval, assetType, maxPeriod + 50);
@@ -406,17 +671,28 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
         };
         updateRuntimeFromCloses(sym, cfg);
       } catch (err) {
-        setRuntimes((prev) => ({
-          ...prev,
-          [sym.symbol]: {
-            ...(prev[sym.symbol] ?? {
-              ma1Val: null, ma2Val: null, ma3Val: null,
-              condResults: [], isGolden: false, inSignal: false, lastCheck: null,
-            }),
-            loading: false,
-            error: String(err),
-          } as SymbolRuntime,
-        }));
+        setRuntimes((prev) => {
+          const persistedRt = loadRuntime(assetType, sym.symbol);
+          return {
+            ...prev,
+            [sym.symbol]: {
+              ...(prev[sym.symbol] ?? {
+                ma1Val: persistedRt.ma1Val,
+                ma2Val: persistedRt.ma2Val,
+                ma3Val: persistedRt.ma3Val,
+                condResults: persistedRt.condResults,
+                isGolden: persistedRt.isGolden,
+                inSignal: persistedRt.inSignal,
+                lastCheck: null,
+                prevMa1GtMa2: persistedRt.prevMa1GtMa2,
+                hasSentSignal: persistedRt.hasSentSignal,
+                trendStatus: persistedRt.trendStatus,
+              }),
+              loading: false,
+              error: String(err),
+            } as SymbolRuntime,
+          };
+        });
       }
     },
     [assetType, updateRuntimeFromCloses]
@@ -504,6 +780,7 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
 
   const updateConfig = useCallback(
     (symbol: string, patch: Partial<SymbolConfig>) => {
+      console.log(`[updateConfig] Called for ${symbol}, patch:`, patch);
       setConfigs((prev) => {
         const current = prev[symbol] ?? loadConfig(assetType, symbol);
         const updated = { ...current, ...patch };
@@ -534,10 +811,15 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
   );
 
   const handleTestSend = async () => {
+    console.log(`[handleTestSend] dingtalkWebhook value:`, dingtalkWebhook);
     setTestStatus("sending");
     setTestMsg("");
     try {
-      const res = await fetch("/api/notify/test", { method: "POST" });
+      const res = await fetch("/api/notify/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ webhookUrl: dingtalkWebhook }),
+      });
       const data = (await res.json()) as { success: boolean; error?: string };
       if (data.success) { setTestStatus("ok"); setTestMsg("发送成功！"); }
       else { setTestStatus("err"); setTestMsg(data.error ?? "发送失败"); }
@@ -551,16 +833,37 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
   const activeSymbols = symbols.filter((s) => s.currentPrice != null);
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+    <div className="rounded-2xl glass-card border-0 p-6 space-y-5">
+      <div className="space-y-3 p-5 rounded-2xl glass-card border-0">
+        <div className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+          <span>🤖</span>
+          钉钉机器人配置
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium">Webhook 地址</Label>
+          <Input
+            value={dingtalkWebhook}
+            onChange={(e) => setDingtalkWebhook(e.target.value)}
+            placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."
+            className="text-xs font-mono bg-white/10 dark:bg-black/10 border-2 border-cyan-500/50 dark:border-cyan-400/50 shadow-[0_0_10px_rgba(0,255,255,0.2)]"
+          />
+        </div>
+      </div>
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <div className="font-semibold text-base">金叉信号监控</div>
+          <div className="text-lg font-bold text-slate-800 dark:text-slate-200">信号监控</div>
           <div className="text-xs text-muted-foreground mt-0.5">
             每个标的独立配置，指标实时更新，配置刷新后自动恢复
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button size="sm" variant="outline" onClick={handleTestSend} disabled={testStatus === "sending"}>
+          <Button 
+            size="sm" 
+            variant="outline" 
+            onClick={handleTestSend} 
+            disabled={testStatus === "sending"}
+            className="border-2 border-purple-500/70 text-purple-600 dark:text-purple-400 hover:bg-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.3)]"
+          >
             {testStatus === "sending" ? "发送中..." : "📡 测试钉钉"}
           </Button>
           {testStatus !== "idle" && (
@@ -583,10 +886,10 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
             return (
               <div
                 key={sym.symbol}
-                className={`rounded-lg border p-3 space-y-2 transition-colors ${
+                className={`rounded-2xl border-0 p-4 space-y-3 transition-all duration-300 glass-card price-card-hover ${
                   cfg.enabled && rt?.isGolden
-                    ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30"
-                    : "border-border"
+                    ? "ring-2 ring-yellow-400/50"
+                    : ""
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -598,11 +901,27 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
                     {cfg.enabled && rt?.loading && (
                       <span className="text-xs text-muted-foreground animate-pulse">加载</span>
                     )}
-                    {cfg.enabled && !rt?.loading && rt?.isGolden && (
-                      <Badge className="bg-yellow-500 text-white text-xs">✨ 信号</Badge>
+                    {cfg.enabled && !rt?.loading && rt?.trendStatus && (
+                      <Badge 
+                        className={`text-[10px] px-1.5 py-0.5 ${
+                          rt.trendStatus === 'bullish' 
+                            ? 'bg-green-500 text-white' 
+                            : rt.trendStatus === 'bearish' 
+                              ? 'bg-red-500 text-white' 
+                              : 'bg-gray-500 text-white'
+                        }`}
+                      >
+                        {rt.trendStatus === 'bullish' ? '🐂 多头趋势' : rt.trendStatus === 'bearish' ? '🐻 空头趋势' : '➖ 中性'}
+                      </Badge>
                     )}
-                    {cfg.enabled && !rt?.loading && rt && !rt.isGolden && rt.lastCheck && (
-                      <Badge variant="secondary" className="text-xs">未触发</Badge>
+                    {cfg.enabled && !rt?.loading && rt?.isGolden && (
+                      <Badge className="bg-yellow-500 text-white text-[10px] px-1.5 py-0.5">✨ 已触发过信号</Badge>
+                    )}
+                    {cfg.enabled && !rt?.loading && rt?.hasSentSignal && !rt?.isGolden && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">已触发过信号</Badge>
+                    )}
+                    {cfg.enabled && !rt?.loading && rt && !rt.hasSentSignal && !rt.isGolden && rt.lastCheck && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">未触发</Badge>
                     )}
                     <Switch
                       checked={cfg.enabled}
@@ -611,37 +930,41 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
                   </div>
                 </div>
 
-                {cfg.enabled && rt && !rt.error && rt.lastCheck && (
+                {cfg.enabled && rt && !rt.error && (
                   <div className="space-y-1 text-xs">
                     <Separator />
                     <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
                       <span className="text-muted-foreground">当前价</span>
-                      <span className="font-mono">{fmtVal(sym.currentPrice)}</span>
+                      <span className="font-mono">{fmtVal(sym.currentPrice, true, isCNY)}</span>
                       <span className="text-muted-foreground">{cfg.maType}{cfg.ma1Period}</span>
-                      <span className="font-mono">{fmtVal(rt.ma1Val)}</span>
+                      <span className="font-mono">{fmtVal(rt.ma1Val, true, isCNY)}</span>
                       <span className="text-muted-foreground">{cfg.maType}{cfg.ma2Period}</span>
-                      <span className="font-mono">{fmtVal(rt.ma2Val)}</span>
+                      <span className="font-mono">{fmtVal(rt.ma2Val, true, isCNY)}</span>
                       <span className="text-muted-foreground">{cfg.maType}{cfg.ma3Period}</span>
-                      <span className="font-mono">{fmtVal(rt.ma3Val)}</span>
+                      <span className="font-mono">{fmtVal(rt.ma3Val, true, isCNY)}</span>
                     </div>
-                    <div className="space-y-0.5 pt-0.5">
-                      {cfg.conditions.map((c, i) => {
-                        const ok = rt.condResults[i] ?? false;
-                        return (
-                          <div key={c.id} className="flex items-center gap-1.5">
-                            <span className={ok ? "text-green-500" : "text-red-400"}>
-                              {ok ? "✅" : "❌"}
-                            </span>
-                            <span className="text-muted-foreground">
-                              {SIDE_LABELS[c.left]} {c.op} {SIDE_LABELS[c.right]}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="text-muted-foreground">
-                      {rt.lastCheck.toLocaleTimeString("zh-CN")} · {cfg.interval} · {cfg.maType}
-                    </div>
+                    {rt.condResults && rt.condResults.length > 0 && (
+                      <div className="space-y-0.5 pt-0.5">
+                        {cfg.conditions.map((c, i) => {
+                          const ok = rt.condResults[i] ?? false;
+                          return (
+                            <div key={c.id} className="flex items-center gap-1.5">
+                              <span className={ok ? "text-green-500" : "text-red-400"}>
+                                {ok ? "✅" : "❌"}
+                              </span>
+                              <span className="text-muted-foreground">
+                                {SIDE_LABELS[c.left]} {c.op} {SIDE_LABELS[c.right]}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {rt.lastCheck && (
+                      <div className="text-muted-foreground">
+                        {rt.lastCheck.toLocaleTimeString("zh-CN")} · {cfg.interval} · {cfg.maType}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -664,7 +987,7 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
                     <div className="mt-2 space-y-3">
                       <Separator />
 
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-3 gap-2">
                         <div className="space-y-1">
                           <Label className="text-xs">K线周期</Label>
                           <select
@@ -683,6 +1006,17 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
                             onChange={(e) => updateConfig(sym.symbol, { maType: e.target.value as MAType })}
                           >
                             {MA_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">信号类型</Label>
+                          <select
+                            className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs focus:outline-none"
+                            value={cfg.signalType}
+                            onChange={(e) => updateConfig(sym.symbol, { signalType: e.target.value as SignalType })}
+                          >
+                            <option value="golden">金叉</option>
+                            <option value="death">死叉</option>
                           </select>
                         </div>
                       </div>
