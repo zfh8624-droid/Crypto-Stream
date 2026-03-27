@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import { SimpleSwitch } from "@/components/ui/simple-switch";
 import { Separator } from "@/components/ui/separator";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 
@@ -892,42 +892,46 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
                     : ""
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0">
-                    <div className="font-semibold text-sm truncate">{sym.displayName}</div>
-                    <div className="text-xs text-muted-foreground">{sym.symbol}</div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {cfg.enabled && rt?.loading && (
-                      <span className="text-xs text-muted-foreground animate-pulse">加载</span>
-                    )}
-                    {cfg.enabled && !rt?.loading && rt?.trendStatus && (
-                      <Badge 
-                        className={`text-[10px] px-1.5 py-0.5 ${
-                          rt.trendStatus === 'bullish' 
-                            ? 'bg-green-500 text-white' 
-                            : rt.trendStatus === 'bearish' 
-                              ? 'bg-red-500 text-white' 
-                              : 'bg-gray-500 text-white'
-                        }`}
-                      >
-                        {rt.trendStatus === 'bullish' ? '🐂 多头趋势' : rt.trendStatus === 'bearish' ? '🐻 空头趋势' : '➖ 中性'}
-                      </Badge>
-                    )}
-                    {cfg.enabled && !rt?.loading && rt?.isGolden && (
-                      <Badge className="bg-yellow-500 text-white text-[10px] px-1.5 py-0.5">✨ 已触发过信号</Badge>
-                    )}
-                    {cfg.enabled && !rt?.loading && rt?.hasSentSignal && !rt?.isGolden && (
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">已触发过信号</Badge>
-                    )}
-                    {cfg.enabled && !rt?.loading && rt && !rt.hasSentSignal && !rt.isGolden && rt.lastCheck && (
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">未触发</Badge>
-                    )}
-                    <Switch
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm truncate">{sym.displayName}</div>
+                      <div className="text-xs text-muted-foreground">{sym.symbol}</div>
+                    </div>
+                    <SimpleSwitch
                       checked={cfg.enabled}
                       onCheckedChange={(v) => handleToggle(sym.symbol, v)}
                     />
                   </div>
+                  {cfg.enabled && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {rt?.loading && (
+                        <span className="text-xs text-muted-foreground animate-pulse">加载</span>
+                      )}
+                      {!rt?.loading && rt?.trendStatus && (
+                        <Badge 
+                          className={`text-[10px] px-1.5 py-0.5 ${
+                            rt.trendStatus === 'bullish' 
+                              ? 'bg-green-500 text-white' 
+                              : rt.trendStatus === 'bearish' 
+                                ? 'bg-red-500 text-white' 
+                                : 'bg-gray-500 text-white'
+                          }`}
+                        >
+                          {rt.trendStatus === 'bullish' ? '🐂 多头趋势' : rt.trendStatus === 'bearish' ? '🐻 空头趋势' : '➖ 中性'}
+                        </Badge>
+                      )}
+                      {!rt?.loading && rt?.isGolden && (
+                        <Badge className="bg-yellow-500 text-white text-[10px] px-1.5 py-0.5">✨ 已触发过信号</Badge>
+                      )}
+                      {!rt?.loading && rt?.hasSentSignal && !rt?.isGolden && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">已触发过信号</Badge>
+                      )}
+                      {!rt?.loading && rt && !rt.hasSentSignal && !rt.isGolden && rt.lastCheck && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">未触发</Badge>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {cfg.enabled && rt && !rt.error && (

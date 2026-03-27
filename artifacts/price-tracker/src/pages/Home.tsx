@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useCallback } from "react";
+import { useState, useRef, useMemo, useCallback, useEffect } from "react";
 import { useBinanceTracker, useFinnhubTracker, PriceEntry } from "@/hooks/usePriceTracker";
 import { useAShareTracker, AShareQuote } from "@/hooks/useAShareWS";
 import { WSStatus } from "@/hooks/useWebSocket";
@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SimpleTabs, SimpleTabsContent, SimpleTabsList, SimpleTabsTrigger } from "@/components/ui/simple-tabs";
 import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
@@ -17,10 +17,37 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Trash2 } from "lucide-react";
 
 const WS_PASSWORD = "zfh8624";
-const DEFAULT_BINANCE_WS = "wss://stream.binance.com:9443";
+// 默认使用后端代理模式
+const getDefaultBinanceWS = () => {
+  return `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/binance`;
+};
+const DEFAULT_BINANCE_WS = "ws://localhost:3000/api/binance";
 const DEFAULT_CRYPTO_SYMBOLS = ["BTC", "ETH", "BNB", "SOL", "XRP"];
+
+const CRYPTO_NAMES: Record<string, string> = {
+  BTC: "Bitcoin",
+  ETH: "Ethereum",
+  BNB: "Binance Coin",
+  SOL: "Solana",
+  XRP: "Ripple",
+  DOGE: "Dogecoin",
+  ADA: "Cardano",
+  DOT: "Polkadot",
+  MATIC: "Polygon",
+  AVAX: "Avalanche",
+  LINK: "Chainlink",
+  UNI: "Uniswap",
+  ATOM: "Cosmos",
+  LTC: "Litecoin",
+  BCH: "Bitcoin Cash",
+  XLM: "Stellar",
+  FIL: "Filecoin",
+  TRX: "TRON",
+  ETC: "Ethereum Classic",
+};
 
 const DEFAULT_FINNHUB_WS = "wss://ws.finnhub.io";
 const DEFAULT_FINNHUB_TOKEN = "";
@@ -149,8 +176,9 @@ function StatusDot({ status }: { status: WSStatus }) {
   );
 }
 
-function PriceCard({ entry }: { entry: PriceEntry }) {
+function PriceCard({ entry, onRemove }: { entry: PriceEntry; onRemove?: (symbol: string) => void }) {
   const isUp = (entry.change24hPct ?? 0) >= 0;
+  const cryptoName = CRYPTO_NAMES[entry.symbol] || entry.symbol;
   const flashClass =
     entry.flash === "up"
       ? "bg-green-50/80 dark:bg-green-950/50"
@@ -159,11 +187,24 @@ function PriceCard({ entry }: { entry: PriceEntry }) {
       : "";
 
   return (
-    <div className={`rounded-2xl border border-border p-5 transition-all duration-300 ${flashClass} glass-card price-card-hover`}>
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="font-bold text-xl leading-none bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
+    <div className={`rounded-2xl border border-border p-4 sm:p-5 transition-all duration-300 ${flashClass} glass-card price-card-hover relative`}>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={() => onRemove(entry.symbol)}
+          className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-600 transition-colors"
+          title="删除"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      )}
+      <div className="flex items-start justify-between gap-2 pr-7">
+        <div className="min-w-0 flex-1">
+          <div className="font-bold text-lg sm:text-xl leading-none text-blue-600 dark:text-blue-400">
             {entry.symbol}
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5 truncate">
+            {cryptoName}
           </div>
           {entry.lastUpdate && (
             <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
@@ -175,20 +216,20 @@ function PriceCard({ entry }: { entry: PriceEntry }) {
         {entry.change24hPct != null && (
           <Badge 
             variant={isUp ? "default" : "destructive"} 
-            className={`text-xs shrink-0 ${isUp ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-red-500 to-rose-600'}`}
+            className={`text-xs shrink-0 !text-white`}
+            style={{ backgroundColor: isUp ? '#22c55e' : '#ef4444' }}
           >
             {isUp ? "📈 +" : "📉 "}{entry.change24hPct.toFixed(2)}%
           </Badge>
         )}
       </div>
-      <div className="mt-4">
+      <div className="mt-3 sm:mt-4">
         {entry.price != null ? (
           <span
-            className={`text-3xl font-mono font-extrabold transition-all duration-300 ${
-              entry.flash === "up" ? "text-green-600 dark:text-green-400 number-flash"
-              : entry.flash === "down" ? "text-red-600 dark:text-red-400 number-flash"
-              : "text-foreground"
-            }`}
+            className={`text-2xl sm:text-3xl font-mono font-extrabold transition-all duration-300 break-all number-flash`}
+            style={{ 
+              color: entry.flash === "up" ? '#16a34a' : entry.flash === "down" ? '#dc2626' : undefined
+            }}
           >
             ${entry.price.toLocaleString("en-US", {
               minimumFractionDigits: 2,
@@ -196,7 +237,7 @@ function PriceCard({ entry }: { entry: PriceEntry }) {
             })}
           </span>
         ) : (
-          <span className="text-3xl font-mono font-bold text-muted-foreground animate-pulse">等待数据...</span>
+          <span className="text-2xl sm:text-3xl font-mono font-bold text-muted-foreground animate-pulse">等待数据...</span>
         )}
       </div>
       {entry.volume != null && (
@@ -209,21 +250,33 @@ function PriceCard({ entry }: { entry: PriceEntry }) {
   );
 }
 
-function AShareCard({ quote }: { quote: AShareQuote }) {
+function AShareCard({ quote, onRemove }: { quote: AShareQuote; onRemove?: (code: string) => void }) {
   const isUp = quote.changePct >= 0;
   const flashClass =
-    quote.flash === "up" ? "bg-green-50/80 dark:bg-green-950/50"
-    : quote.flash === "down" ? "bg-red-50/80 dark:bg-red-950/50"
+    quote.flash === "up" ? "bg-red-50/80 dark:bg-red-950/50"
+    : quote.flash === "down" ? "bg-green-50/80 dark:bg-green-950/50"
     : "";
 
   return (
-    <div className={`rounded-2xl border border-border p-5 transition-all duration-300 ${flashClass} glass-card price-card-hover`}>
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="font-bold text-xl leading-none bg-gradient-to-r from-red-500 to-orange-600 bg-clip-text text-transparent">
+    <div className={`rounded-2xl border border-border p-4 sm:p-5 transition-all duration-300 ${flashClass} glass-card price-card-hover relative`}>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={() => onRemove(quote.code)}
+          className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-600 transition-colors"
+          title="删除"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      )}
+      <div className="flex items-start justify-between gap-2 pr-7">
+        <div className="min-w-0 flex-1">
+          <div className="font-bold text-lg sm:text-xl leading-none text-red-600 dark:text-red-400">
             {quote.name}
           </div>
-          <div className="text-xs text-muted-foreground mt-0.5 font-mono">{quote.code}</div>
+          <div className="text-xs text-muted-foreground mt-0.5 font-mono">
+            {quote.code}
+          </div>
           {quote.time && (
             <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
               <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
@@ -233,38 +286,48 @@ function AShareCard({ quote }: { quote: AShareQuote }) {
         </div>
         <Badge 
           variant={isUp ? "default" : "destructive"} 
-          className={`text-xs shrink-0 ${isUp ? 'bg-gradient-to-r from-red-500 to-orange-600' : 'bg-gradient-to-r from-green-500 to-emerald-600'}`}
+          className={`text-xs shrink-0 !text-white`}
+          style={{ backgroundColor: isUp ? '#ef4444' : '#22c55e' }}
         >
           {isUp ? "📈 +" : "📉 "}{quote.changePct.toFixed(2)}%
         </Badge>
       </div>
-      <div className="mt-4">
+      <div className="mt-3 sm:mt-4">
         <span
-          className={`text-3xl font-mono font-extrabold transition-all duration-300 ${
-            quote.flash === "up" ? "text-red-600 dark:text-red-400 number-flash"
-            : quote.flash === "down" ? "text-green-600 dark:text-green-400 number-flash"
-            : "text-foreground"
-          }`}
+          className={`text-2xl sm:text-3xl font-mono font-extrabold transition-all duration-300 break-all number-flash`}
+          style={{ 
+            color: quote.flash === "up" ? '#dc2626' : quote.flash === "down" ? '#16a34a' : undefined
+          }}
         >
           ¥{quote.price.toFixed(3)}
         </span>
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <div>涨跌额: <span className={isUp ? "text-red-600" : "text-green-600"} font-bold>{isUp ? "+" : ""}{quote.change.toFixed(3)}</span></div>
-        <div>昨收: {quote.prevClose.toFixed(3)}</div>
-        <div>今开: {quote.open.toFixed(3)}</div>
-        <div>最高: {quote.high.toFixed(3)}</div>
-        <div>最低: {quote.low.toFixed(3)}</div>
-        <div>📊 成交量: {(quote.volume / 10000).toFixed(0)}万手</div>
+      <div className="mt-3 grid grid-cols-2 gap-x-3 sm:gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <div className="truncate">涨跌额: <span style={{ color: isUp ? '#dc2626' : '#16a34a' }} className="font-bold">{isUp ? "+" : ""}{quote.change.toFixed(3)}</span></div>
+        <div className="truncate">昨收: {quote.prevClose.toFixed(3)}</div>
+        <div className="truncate">今开: {quote.open.toFixed(3)}</div>
+        <div className="truncate">最高: {quote.high.toFixed(3)}</div>
+        <div className="truncate">最低: {quote.low.toFixed(3)}</div>
+        <div className="truncate">📊 成交量: {(quote.volume / 10000).toFixed(0)}万手</div>
       </div>
     </div>
   );
 }
 
-function AShareEmptyCard({ code }: { code: string }) {
+function AShareEmptyCard({ code, onRemove }: { code: string; onRemove?: (code: string) => void }) {
   return (
-    <div className="rounded-xl border border-border p-4">
-      <div className="font-bold text-base leading-none text-muted-foreground">{code}</div>
+    <div className="rounded-xl border border-border p-4 relative">
+      {onRemove && (
+        <button
+          type="button"
+          onClick={() => onRemove(code)}
+          className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-600 transition-colors"
+          title="删除"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      )}
+      <div className="font-bold text-base leading-none text-muted-foreground pr-7">{code}</div>
       <div className="mt-3 text-2xl font-mono font-bold text-muted-foreground">等待数据...</div>
     </div>
   );
@@ -303,17 +366,7 @@ function SymbolInput({
           添加
         </Button>
       </div>
-      <div className="flex flex-wrap gap-1.5 mt-1">
-        {symbols.map((sym) => (
-          <Badge
-            key={sym} variant="secondary"
-            className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-colors"
-            onClick={() => onRemove(sym)}
-          >
-            {sym} ×
-          </Badge>
-        ))}
-      </div>
+
     </div>
   );
 }
@@ -395,8 +448,32 @@ function WSConfigPanel({
   );
 }
 
-function CryptoTab() {
-  const [wsUrl, setWsUrl] = useState(DEFAULT_BINANCE_WS);
+function CryptoTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => void) => void }) {
+  // 默认使用后端代理模式
+  const defaultWsUrl = useMemo(() => {
+    return `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/binance`;
+  }, []);
+  
+  // 自定义持久化状态，强制使用Vite代理地址
+  const [wsUrl, setWsUrl] = useState<string>(() => {
+    try {
+      // 清除旧的地址，强制使用Vite代理
+      localStorage.removeItem("crypto_ws_url");
+    } catch {
+      // ignore
+    }
+    return defaultWsUrl;
+  });
+  
+  // 同步到 localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem("crypto_ws_url", wsUrl);
+    } catch {
+      // ignore
+    }
+  }, [wsUrl]);
+  
   const [symbols, setSymbols] = usePersistedState("crypto_symbols", DEFAULT_CRYPTO_SYMBOLS);
 
   const config = useMemo(
@@ -440,7 +517,7 @@ function CryptoTab() {
     <div className="space-y-4">
       <WSConfigPanel
         label="Binance 加密货币" wsUrl={wsUrl} onWsUrlChange={setWsUrl}
-        urlPlaceholder={DEFAULT_BINANCE_WS}
+        urlPlaceholder={defaultWsUrl}
       />
       <SymbolInput
         label="交易对（自动添加 USDT）" symbols={symbols}
@@ -451,14 +528,23 @@ function CryptoTab() {
         <StatusDot status={status} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {entries.map((entry) => <PriceCard key={entry.symbol} entry={entry} />)}
+        {entries.map((entry) => (
+          <PriceCard 
+            key={entry.symbol} 
+            entry={entry} 
+            onRemove={onDelete 
+              ? (s) => onDelete(s, () => removeSymbol(s)) 
+              : removeSymbol
+            } 
+          />
+        ))}
       </div>
       <GoldenCrossMonitor assetType="crypto" symbols={monitoredSymbols} />
     </div>
   );
 }
 
-function StockTab() {
+function StockTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => void) => void }) {
   const [wsUrl, setWsUrl] = useState(DEFAULT_FINNHUB_WS);
   const [token, setToken] = useState(DEFAULT_FINNHUB_TOKEN);
   const [symbols, setSymbols] = usePersistedState("stock_symbols", DEFAULT_STOCK_SYMBOLS);
@@ -508,13 +594,22 @@ function StockTab() {
         <StatusDot status={status} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {entries.map((entry) => <PriceCard key={entry.symbol} entry={entry} />)}
+        {entries.map((entry) => (
+          <PriceCard 
+            key={entry.symbol} 
+            entry={entry} 
+            onRemove={onDelete 
+              ? (s) => onDelete(s, () => removeSymbol(s)) 
+              : removeSymbol
+            } 
+          />
+        ))}
       </div>
     </div>
   );
 }
 
-function AShareTab() {
+function AShareTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => void) => void }) {
   const [symbols, setSymbols] = usePersistedState("ashare_symbols", DEFAULT_ASHARE_SYMBOLS);
   const { prices, status } = useAShareTracker(symbols);
 
@@ -525,7 +620,9 @@ function AShareTab() {
     setSymbols((prev) => prev.filter((x) => x !== s));
   }, []);
 
-  const wsUrl = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/ashare`;
+  const wsUrl = useMemo(() => {
+    return `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/ashare`;
+  }, []);
 
   const monitoredSymbols = useMemo<MonitoredSymbol[]>(
     () =>
@@ -552,21 +649,21 @@ function AShareTab() {
         label="代码格式：sh+沪市代码 / sz+深市代码" symbols={symbols}
         onAdd={addSymbol} onRemove={removeSymbol} placeholder="例如 sh510300 / sz000001"
       />
-      <div className="rounded-2xl glass-card border-0 p-4 text-xs text-slate-700 dark:text-slate-300 space-y-2">
-        <div className="text-lg font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+      <div className="rounded-2xl glass-card border-0 p-3 sm:p-4 text-xs text-slate-700 dark:text-slate-300 space-y-2">
+        <div className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
           <span>📚</span>
           常用代码参考
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 font-mono">
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded">sh510300 沪深300ETF</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded">sh510500 中证500ETF</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded">sh510050 上证50ETF</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded">sh159919 沪深300ETF(嘉实)</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded">sh600519 贵州茅台</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded">sh601318 中国平安</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded">sz000001 平安银行</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded">sz300750 宁德时代</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded">sh688981 中芯国际</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-2 sm:gap-x-4 gap-y-1 font-mono">
+          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sh510300 沪深300ETF</span>
+          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sh510500 中证500ETF</span>
+          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sh510050 上证50ETF</span>
+          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sh159919 沪深300ETF(嘉实)</span>
+          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sh600519 贵州茅台</span>
+          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sh601318 中国平安</span>
+          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sz000001 平安银行</span>
+          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sz300750 宁德时代</span>
+          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sh688981 中芯国际</span>
         </div>
       </div>
       <div className="flex items-center justify-between">
@@ -576,9 +673,23 @@ function AShareTab() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {symbols.map((code) =>
           prices[code] ? (
-            <AShareCard key={code} quote={prices[code]} />
+            <AShareCard 
+              key={code} 
+              quote={prices[code]} 
+              onRemove={onDelete 
+                ? (c) => onDelete(c, () => removeSymbol(c)) 
+                : removeSymbol
+              } 
+            />
           ) : (
-            <AShareEmptyCard key={code} code={code} />
+            <AShareEmptyCard 
+              key={code} 
+              code={code} 
+              onRemove={onDelete 
+                ? (c) => onDelete(c, () => removeSymbol(c)) 
+                : removeSymbol
+              } 
+            />
           )
         )}
       </div>
@@ -619,38 +730,91 @@ function ParticlesBackground({ activeTab }: { activeTab: string }) {
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("ashare");
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    open: boolean;
+    symbol: string;
+    onConfirm: () => void;
+  }>({ open: false, symbol: "", onConfirm: () => {} });
+
+  const handleDelete = (symbol: string, onDelete: () => void) => {
+    setDeleteConfirm({
+      open: true,
+      symbol,
+      onConfirm: onDelete,
+    });
+  };
+
+  const confirmDelete = () => {
+    deleteConfirm.onConfirm();
+    setDeleteConfirm({ open: false, symbol: "", onConfirm: () => {} });
+  };
+
+  const cancelDelete = () => {
+    setDeleteConfirm({ open: false, symbol: "", onConfirm: () => {} });
+  };
   
   return (
     <div className="min-h-screen bg-background text-foreground relative overflow-hidden">
       <ParticlesBackground activeTab={activeTab} />
       <div className="gradient-bg absolute inset-0 opacity-20 dark:opacity-40" />
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6 relative z-10">
+      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-6 sm:py-8 space-y-4 sm:space-y-6 relative z-10">
         <div className="text-center float-animation">
-          <h1 className="text-4xl font-bold tracking-tight neon-title">
+          <h1 className="text-2xl sm:text-4xl font-bold tracking-tight neon-title">
             🚀 实时价格追踪
           </h1>
-          <p className="text-muted-foreground mt-2 text-sm">
+          <p className="text-muted-foreground mt-2 text-xs sm:text-sm">
             通过 WebSocket 长连接实时获取加密货币、美股和A股价格，支持金叉信号钉钉推送
           </p>
         </div>
         <Separator className="opacity-50" />
-        <Tabs defaultValue="ashare" value={activeTab} onValueChange={setActiveTab} className="pulse-border">
-          <TabsList className="mb-4 glass-card p-1">
-            <TabsTrigger value="ashare" className="data-[state=active]:bg-white/30 dark:data-[state=active]:bg-black/30">
-              🇨🇳 A股 / ETF
-            </TabsTrigger>
-            <TabsTrigger value="crypto" className="data-[state=active]:bg-white/30 dark:data-[state=active]:bg-black/30">
-              ₿ 加密货币
-            </TabsTrigger>
-            <TabsTrigger value="stock" className="data-[state=active]:bg-white/30 dark:data-[state=active]:bg-black/30">
+        <SimpleTabs defaultValue="ashare" value={activeTab} onValueChange={setActiveTab} className="pulse-border">
+          <SimpleTabsList className="mb-3 sm:mb-4 glass-card p-1">
+            <SimpleTabsTrigger 
+              value="ashare" 
+              className="text-xs sm:text-sm"
+            >
+              🇨🇳 A股
+            </SimpleTabsTrigger>
+            <SimpleTabsTrigger 
+              value="crypto" 
+              className="text-xs sm:text-sm"
+            >
+              ₿ 加密
+            </SimpleTabsTrigger>
+            <SimpleTabsTrigger 
+              value="stock" 
+              className="text-xs sm:text-sm"
+            >
               🇺🇸 美股
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="ashare"><AShareTab /></TabsContent>
-          <TabsContent value="crypto"><CryptoTab /></TabsContent>
-          <TabsContent value="stock"><StockTab /></TabsContent>
-        </Tabs>
+            </SimpleTabsTrigger>
+          </SimpleTabsList>
+          <SimpleTabsContent value="ashare">
+            <AShareTab onDelete={handleDelete} />
+          </SimpleTabsContent>
+          <SimpleTabsContent value="crypto">
+            <CryptoTab onDelete={handleDelete} />
+          </SimpleTabsContent>
+          <SimpleTabsContent value="stock">
+            <StockTab onDelete={handleDelete} />
+          </SimpleTabsContent>
+        </SimpleTabs>
       </div>
+
+      {/* 删除确认对话框 */}
+      <Dialog open={deleteConfirm.open} onOpenChange={cancelDelete}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>确认删除</DialogTitle>
+            <DialogDescription>
+              确定要删除 {deleteConfirm.symbol} 吗？此操作不可恢复。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={cancelDelete}>取消</Button>
+            <Button variant="destructive" onClick={confirmDelete}>确认删除</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

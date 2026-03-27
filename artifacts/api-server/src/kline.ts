@@ -9,50 +9,42 @@ export interface KLineCandle {
   volume: number;
 }
 
-// CryptoCompare interval → (endpoint, aggregate)
-const CC_INTERVAL_MAP: Record<string, { endpoint: string; aggregate: number }> = {
-  "1m":  { endpoint: "histominute", aggregate: 1  },
-  "5m":  { endpoint: "histominute", aggregate: 5  },
-  "15m": { endpoint: "histominute", aggregate: 15 },
-  "30m": { endpoint: "histominute", aggregate: 30 },
-  "1h":  { endpoint: "histohour",   aggregate: 1  },
-  "4h":  { endpoint: "histohour",   aggregate: 4  },
-  "1d":  { endpoint: "histoday",    aggregate: 1  },
+// Binance interval mapping
+const BINANCE_INTERVAL_MAP: Record<string, string> = {
+  "1m": "1m",
+  "5m": "5m",
+  "15m": "15m",
+  "30m": "30m",
+  "1h": "1h",
+  "4h": "4h",
+  "1d": "1d",
+  "1w": "1w",
 };
-
-interface CCCandle {
-  time: number; open: number; high: number;
-  low: number;  close: number; volumefrom: number;
-}
 
 export async function fetchBinanceKLines(
   symbol: string,
   interval: string,
   limit: number = 200
 ): Promise<KLineCandle[]> {
-  const map = CC_INTERVAL_MAP[interval] ?? CC_INTERVAL_MAP["1h"];
+  const binanceInterval = BINANCE_INTERVAL_MAP[interval] ?? "1h";
   const fsym = symbol.replace(/USDT$/i, "").toUpperCase();
   const url =
-    `https://min-api.cryptocompare.com/data/v2/${map.endpoint}` +
-    `?fsym=${fsym}&tsym=USDT&limit=${limit}&aggregate=${map.aggregate}`;
+    `https://data-api.binance.vision/api/v3/klines` +
+    `?symbol=${fsym}USDT&interval=${binanceInterval}&limit=${limit}`;
   const res = await fetch(url, {
     headers: { "User-Agent": "Mozilla/5.0" },
   });
-  if (!res.ok) throw new Error(`CryptoCompare K-line error: ${res.status}`);
-  const json = (await res.json()) as {
-    Response: string; Message?: string;
-    Data?: { Data: CCCandle[] };
-  };
-  if (json.Response !== "Success" || !json.Data?.Data) {
-    throw new Error(`CryptoCompare error: ${json.Message ?? "unknown"}`);
-  }
-  return json.Data.Data.map((k) => ({
-    time:   k.time * 1000,
-    open:   k.open,
-    high:   k.high,
-    low:    k.low,
-    close:  k.close,
-    volume: k.volumefrom,
+  if (!res.ok) throw new Error(`Binance K-line error: ${res.status}`);
+  const klines = (await res.json()) as Array<[
+    number, string, string, string, string, string, number, string, number, string, string, string
+  ]>;
+  return klines.map((k) => ({
+    time: k[0],
+    open: parseFloat(k[1]),
+    high: parseFloat(k[2]),
+    low: parseFloat(k[3]),
+    close: parseFloat(k[4]),
+    volume: parseFloat(k[5]),
   }));
 }
 
