@@ -30,32 +30,38 @@ export function useAShareTracker(symbols: string[]) {
   const flashTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const symbolsRef = useRef(symbols);
   symbolsRef.current = symbols;
+  const isConnecting = useRef(false);
 
   const connect = useCallback(() => {
+    if (isConnecting.current) return;
+    isConnecting.current = true;
+
     if (wsRef.current) {
       wsRef.current.onclose = null;
       wsRef.current.close();
+      wsRef.current = null;
     }
+    if (reconnectRef.current) {
+      clearTimeout(reconnectRef.current);
+      reconnectRef.current = null;
+    }
+
     setStatus("connecting");
     const url = getBackendWSUrl();
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      isConnecting.current = false;
       setStatus("connected");
       if (symbolsRef.current.length > 0) {
-        ws.send(
-          JSON.stringify({ type: "subscribe", codes: symbolsRef.current })
-        );
+        ws.send(JSON.stringify({ type: "subscribe", codes: symbolsRef.current }));
       }
     };
 
     ws.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data) as {
-          type: string;
-          data?: AShareQuote[];
-        };
+        const msg = JSON.parse(event.data) as { type: string; data?: AShareQuote[] };
         if (msg.type === "quotes" && Array.isArray(msg.data)) {
           setPrices((prev) => {
             const next = { ...prev };
@@ -63,25 +69,13 @@ export function useAShareTracker(symbols: string[]) {
               const old = prev[q.code];
               const flash =
                 old?.price != null
-                  ? q.price > old.price
-                    ? "up"
-                    : q.price < old.price
-                    ? "down"
-                    : null
+                  ? q.price > old.price ? "up" : q.price < old.price ? "down" : null
                   : null;
-
-              if (flash && flashTimers.current[q.code]) {
-                clearTimeout(flashTimers.current[q.code]);
-              }
-
+              if (flash && flashTimers.current[q.code]) clearTimeout(flashTimers.current[q.code]);
               next[q.code] = { ...q, flash };
-
               if (flash) {
                 flashTimers.current[q.code] = setTimeout(() => {
-                  setPrices((p) => ({
-                    ...p,
-                    [q.code]: { ...p[q.code], flash: null },
-                  }));
+                  setPrices((p) => ({ ...p, [q.code]: { ...p[q.code], flash: null } }));
                 }, 800);
               }
             }
@@ -89,13 +83,17 @@ export function useAShareTracker(symbols: string[]) {
           });
         }
       } catch {
-        // ignore
+        // ignore parse errors
       }
     };
 
-    ws.onerror = () => setStatus("error");
+    ws.onerror = () => {
+      isConnecting.current = false;
+      setStatus("error");
+    };
 
     ws.onclose = () => {
+      isConnecting.current = false;
       setStatus("disconnected");
       reconnectRef.current = setTimeout(() => connect(), 3000);
     };
@@ -104,6 +102,7 @@ export function useAShareTracker(symbols: string[]) {
   useEffect(() => {
     connect();
     return () => {
+      isConnecting.current = false;
       if (reconnectRef.current) clearTimeout(reconnectRef.current);
       if (wsRef.current) {
         wsRef.current.onclose = null;

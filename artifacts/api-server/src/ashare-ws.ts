@@ -125,8 +125,24 @@ function stopPolling() {
   }
 }
 
+const HEARTBEAT_INTERVAL_MS = 30_000;
+
 export function setupAShareWS(server: Server) {
   const wss = new WebSocketServer({ noServer: true });
+
+  const heartbeatTimer = setInterval(() => {
+    for (const ws of wss.clients) {
+      const extWs = ws as WebSocket & { isAlive?: boolean };
+      if (extWs.isAlive === false) {
+        extWs.terminate();
+        return;
+      }
+      extWs.isAlive = false;
+      extWs.ping();
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+
+  wss.on("close", () => clearInterval(heartbeatTimer));
 
   server.on("upgrade", (req: IncomingMessage, socket, head) => {
     const url = req.url ?? "";
@@ -138,6 +154,10 @@ export function setupAShareWS(server: Server) {
   });
 
   wss.on("connection", (ws: WebSocket) => {
+    const extWs = ws as WebSocket & { isAlive?: boolean };
+    extWs.isAlive = true;
+    extWs.on("pong", () => { extWs.isAlive = true; });
+
     subscriptionMap.set(ws, new Set());
     startPolling();
     logger.info("A-share WS client connected");

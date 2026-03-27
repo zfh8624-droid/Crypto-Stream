@@ -8,6 +8,7 @@ interface UseWebSocketOptions {
   onClose?: () => void;
   onError?: () => void;
   reconnectDelay?: number;
+  heartbeatMs?: number;
 }
 
 export function useWebSocket(
@@ -16,11 +17,21 @@ export function useWebSocket(
 ) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastMsgAtRef = useRef<number>(Date.now());
   const [status, setStatus] = useState<WSStatus>("disconnected");
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
+  const clearHeartbeat = () => {
+    if (heartbeatTimerRef.current) {
+      clearInterval(heartbeatTimerRef.current);
+      heartbeatTimerRef.current = null;
+    }
+  };
+
   const disconnect = useCallback(() => {
+    clearHeartbeat();
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
@@ -41,11 +52,30 @@ export function useWebSocket(
       wsRef.current = ws;
 
       ws.onopen = () => {
+        lastMsgAtRef.current = Date.now();
         setStatus("connected");
         optionsRef.current.onOpen?.();
+
+        const hbMs = optionsRef.current.heartbeatMs;
+        if (hbMs && hbMs > 0) {
+          clearHeartbeat();
+          heartbeatTimerRef.current = setInterval(() => {
+            if (wsRef.current !== ws) return;
+            const idle = Date.now() - lastMsgAtRef.current;
+            if (idle > hbMs && ws.readyState === WebSocket.OPEN) {
+              console.warn(`[WS] Idle ${idle}ms, reconnecting…`);
+              ws.onclose = null;
+              ws.close();
+              wsRef.current = null;
+              const delay = optionsRef.current.reconnectDelay ?? 2000;
+              reconnectTimerRef.current = setTimeout(() => connect(wsUrl), delay);
+            }
+          }, Math.max(hbMs / 2, 5000));
+        }
       };
 
       ws.onmessage = (event) => {
+        lastMsgAtRef.current = Date.now();
         try {
           const data = JSON.parse(event.data);
           optionsRef.current.onMessage(data);
@@ -60,11 +90,12 @@ export function useWebSocket(
       };
 
       ws.onclose = () => {
+        clearHeartbeat();
         setStatus("disconnected");
         optionsRef.current.onClose?.();
         const delay = optionsRef.current.reconnectDelay ?? 3000;
         reconnectTimerRef.current = setTimeout(() => {
-          if (wsRef.current === ws) {
+          if (wsRef.current === ws || wsRef.current === null) {
             connect(wsUrl);
           }
         }, delay);
@@ -88,9 +119,8 @@ export function useWebSocket(
     }
     const ws = connect(url);
     return () => {
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-      }
+      clearHeartbeat();
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       ws.onclose = null;
       ws.close();
       wsRef.current = null;
