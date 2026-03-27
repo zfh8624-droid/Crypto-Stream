@@ -115,6 +115,21 @@ async function apiFetchCloses(
   type: AssetType,
   limit: number
 ): Promise<number[]> {
+  if (type === "crypto") {
+    // Fetch directly from Binance in the browser (backend is geo-blocked 451)
+    const params = new URLSearchParams({
+      symbol: `${symbol}USDT`,
+      interval,
+      limit: String(limit),
+    });
+    const res = await fetch(`https://api.binance.com/api/v3/klines?${params}`);
+    if (!res.ok) throw new Error(`Binance K线请求失败 (${res.status})`);
+    const rows = await res.json() as unknown[][];
+    if (!Array.isArray(rows) || rows.length === 0) throw new Error("Binance K线数据为空");
+    return rows.map((r) => parseFloat(r[4] as string)); // index 4 = close price
+  }
+
+  // A-share: use backend proxy
   const params = new URLSearchParams({ symbol, interval, type, limit: String(limit) });
   const res = await fetch(`/api/kline/data?${params}`);
   let errText = "";
