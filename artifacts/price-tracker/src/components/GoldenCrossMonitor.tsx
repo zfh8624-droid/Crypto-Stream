@@ -505,6 +505,25 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
     }
     setRuntimes(initialRuntimes);
   }, [symbols.map((s) => s.symbol).join(","), assetType]);
+  
+  // 当配置、K线数据或价格准备好后，重新计算状态
+  useEffect(() => {
+    for (const sym of symbols) {
+      const cfg = configs[sym.symbol];
+      const cached = closesCache.current[sym.symbol];
+      
+      if (cfg && cached && cached.closes.length > 0 && sym.currentPrice != null) {
+        updateRuntimeFromCloses(sym, cfg);
+      }
+    }
+  }, [
+    symbols.map((s) => `${s.symbol}:${s.currentPrice}`).join(","),
+    Object.entries(configs)
+      .map(([k, v]) => `${k}:${v.enabled}:${v.interval}:${v.maType}`)
+      .sort()
+      .join("|"),
+    updateRuntimeFromCloses,
+  ]);
 
   const updateRuntimeFromCloses = useCallback(
     (sym: MonitoredSymbol, cfg: SymbolConfig) => {
