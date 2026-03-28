@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { calcMA, MAType } from "@/lib/ma";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,8 +7,26 @@ import { Label } from "@/components/ui/label";
 import { SimpleSwitch } from "@/components/ui/simple-switch";
 import { Separator } from "@/components/ui/separator";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export type AssetType = "crypto" | "ashare";
+
+interface BackendMonitor {
+  id?: number;
+  userId?: number;
+  symbol: string;
+  displayName: string;
+  assetType: AssetType;
+  enabled: boolean;
+  interval: string;
+  maType: MAType;
+  ma1Period: number;
+  ma2Period: number;
+  ma3Period: number;
+  conditions: Condition[];
+  signalType: SignalType;
+  dingtalkWebhook?: string;
+}
 
 export interface MonitoredSymbol {
   symbol: string;
@@ -107,12 +125,28 @@ function getDefaultConfig(assetType: AssetType): SymbolConfig {
 
 const CACHE_TTL = 5 * 60 * 1000;
 
-function storageKey(assetType: AssetType, symbol: string) {
-  return `gc_v2_${assetType}_${symbol}`;
+function storageKey(assetType: AssetType, symbol: string, isGuest: boolean = false, userId?: string) {
+  let prefix: string;
+  if (isGuest) {
+    prefix = "guest_";
+  } else if (userId) {
+    prefix = `user_${userId}_`;
+  } else {
+    prefix = "user_";
+  }
+  return `${prefix}gc_v2_${assetType}_${symbol}`;
 }
 
-function runtimeStorageKey(assetType: AssetType, symbol: string) {
-  return `gc_rt_${assetType}_${symbol}`;
+function runtimeStorageKey(assetType: AssetType, symbol: string, isGuest: boolean = false, userId?: string) {
+  let prefix: string;
+  if (isGuest) {
+    prefix = "guest_";
+  } else if (userId) {
+    prefix = `user_${userId}_`;
+  } else {
+    prefix = "user_";
+  }
+  return `${prefix}gc_rt_${assetType}_${symbol}`;
 }
 
 interface PersistedRuntime {
@@ -128,9 +162,9 @@ interface PersistedRuntime {
   prevMa1GtMa2: boolean | null;
 }
 
-function loadConfig(assetType: AssetType, symbol: string): SymbolConfig {
+function loadConfig(assetType: AssetType, symbol: string, isGuest: boolean = false, userId?: string): SymbolConfig {
   try {
-    const key = storageKey(assetType, symbol);
+    const key = storageKey(assetType, symbol, isGuest, userId);
     const raw = localStorage.getItem(key);
     console.log(`[loadConfig] Loading ${key}, raw:`, raw);
     const defaultConfig = getDefaultConfig(assetType);
@@ -153,9 +187,9 @@ function loadConfig(assetType: AssetType, symbol: string): SymbolConfig {
   }
 }
 
-function saveConfig(assetType: AssetType, symbol: string, cfg: SymbolConfig) {
+function saveConfig(assetType: AssetType, symbol: string, cfg: SymbolConfig, isGuest: boolean = false, userId?: string) {
   try {
-    const key = storageKey(assetType, symbol);
+    const key = storageKey(assetType, symbol, isGuest, userId);
     console.log(`[saveConfig] Saving ${key}:`, cfg);
     localStorage.setItem(key, JSON.stringify(cfg));
     console.log(`[saveConfig] Saved successfully`);
@@ -164,9 +198,9 @@ function saveConfig(assetType: AssetType, symbol: string, cfg: SymbolConfig) {
   }
 }
 
-function loadRuntime(assetType: AssetType, symbol: string): PersistedRuntime {
+function loadRuntime(assetType: AssetType, symbol: string, isGuest: boolean = false, userId?: string): PersistedRuntime {
   try {
-    const key = runtimeStorageKey(assetType, symbol);
+    const key = runtimeStorageKey(assetType, symbol, isGuest, userId);
     const raw = localStorage.getItem(key);
     if (!raw) return { 
       inSignal: false, 
@@ -210,9 +244,9 @@ function loadRuntime(assetType: AssetType, symbol: string): PersistedRuntime {
   }
 }
 
-function saveRuntime(assetType: AssetType, symbol: string, rt: PersistedRuntime) {
+function saveRuntime(assetType: AssetType, symbol: string, rt: PersistedRuntime, isGuest: boolean = false, userId?: string) {
   try {
-    const key = runtimeStorageKey(assetType, symbol);
+    const key = runtimeStorageKey(assetType, symbol, isGuest, userId);
     localStorage.setItem(key, JSON.stringify(rt));
   } catch {
     // ignore
@@ -450,11 +484,96 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
   const intervals = assetType === "crypto" ? CRYPTO_INTERVALS : ASHARE_INTERVALS;
   const isCrypto = assetType === "crypto";
   const isCNY = assetType === "ashare";
+  const { token, isGuest, user } = useAuth();
+  const userId = user?.id;
+
+  const [backendMonitors, setBackendMonitors] = useState<Record<string, BackendMonitor>>({});
+  const [loadingMonitors, setLoadingMonitors] = useState(true);
+
+  // 从后端加载监控配置
+  const loadBackendMonitors = useCallback(async () => {
+    console.log('[loadBackendMonitors] Called, isGuest:', isGuest, 'token:', !!token, 'assetType:', assetType);
+    if (isGuest || !token) {
+      setLoadingMonitors(false);
+      return;
+    }
+    
+    try {
+      const res = await fetch("/api/monitors", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      console.log('[loadBackendMonitors] Response status:', res.status);
+      if (res.ok) {
+        const monitors = await res.json() as BackendMonitor[];
+        console.log('[loadBackendMonitors] Raw monitors from API:', monitors);
+        const monitorMap: Record<string, BackendMonitor> = {};
+        for (const m of monitors) {
+          if (m.assetType === assetType) {
+            monitorMap[m.symbol] = m;
+          }
+        }
+        console.log('[loadBackendMonitors] Filtered monitors for assetType', assetType, ':', monitorMap);
+        setBackendMonitors(monitorMap);
+      }
+    } catch (err) {
+      console.error("Failed to load backend monitors:", err);
+    } finally {
+      setLoadingMonitors(false);
+    }
+  }, [token, isGuest, assetType]);
+
+  // 初始加载后端监控
+  useEffect(() => {
+    if (!isGuest) {
+      loadBackendMonitors();
+    }
+  }, [loadBackendMonitors, isGuest]);
+
+  // 将后端监控符号同步到 localStorage
+  useEffect(() => {
+    if (isGuest || loadingMonitors) return;
+    
+    try {
+      // 确定当前资产类型对应的 localStorage key
+      const localStorageKey = assetType === 'ashare' ? 'ashare_symbols' : 'crypto_symbols';
+      
+      // 获取当前 localStorage 中的符号
+      let currentSymbols: string[] = [];
+      const stored = localStorage.getItem(localStorageKey);
+      if (stored) {
+        try {
+          currentSymbols = JSON.parse(stored);
+        } catch {
+          // 如果解析失败，使用空数组
+          currentSymbols = [];
+        }
+      }
+      
+      // 获取后端监控中的所有符号
+      const backendSymbols = Object.values(backendMonitors).map(m => m.symbol);
+      
+      // 合并并去重
+      const allSymbolsSet = new Set([...currentSymbols, ...backendSymbols]);
+      const allSymbols = Array.from(allSymbolsSet);
+      
+      // 如果有变化，更新 localStorage
+      if (allSymbols.length !== currentSymbols.length || 
+          !allSymbols.every((s, i) => s === currentSymbols[i])) {
+        localStorage.setItem(localStorageKey, JSON.stringify(allSymbols));
+        console.log(`[GoldenCrossMonitor] Updated ${localStorageKey}:`, allSymbols);
+      }
+    } catch (err) {
+      console.error('[GoldenCrossMonitor] Error syncing to localStorage:', err);
+    }
+  }, [assetType, backendMonitors, isGuest, loadingMonitors]);
 
   const [configs, setConfigs] = useState<Record<string, SymbolConfig>>(() => {
+    // 初始化时，访客模式用localStorage，用户模式先留空等后端数据
     const initial: Record<string, SymbolConfig> = {};
-    for (const sym of symbols) {
-      initial[sym.symbol] = loadConfig(assetType, sym.symbol);
+    if (isGuest) {
+      for (const sym of symbols) {
+        initial[sym.symbol] = loadConfig(assetType, sym.symbol);
+      }
     }
     return initial;
   });
@@ -494,13 +613,90 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
   const symbolsRef = useRef(symbols);
   symbolsRef.current = symbols;
 
-  // 当有新symbol时，加载对应的配置和运行时
+  // 用户模式下：合并后端监控 + 当前实时价格符号
+  const displaySymbols = useMemo(() => {
+    try {
+      if (isGuest) {
+        // 访客模式：只显示有实时价格的
+        return symbols.filter((s) => s.currentPrice != null);
+      } else {
+        // 用户模式：显示所有后端监控 + 当前实时价格符号（去重）
+        const symbolMap = new Map<string, MonitoredSymbol>();
+        
+        // 先添加所有后端监控（安全检查）
+        if (backendMonitors && typeof backendMonitors === 'object') {
+          Object.values(backendMonitors).forEach(m => {
+            if (m && m.symbol && m.displayName) {
+              symbolMap.set(m.symbol, {
+                symbol: m.symbol,
+                displayName: m.displayName,
+                currentPrice: null, // 后端监控可能没有实时价格
+              });
+            }
+          });
+        }
+        
+        // 再添加当前有实时价格的符号（覆盖可能缺失的 displayName）
+        if (symbols && Array.isArray(symbols)) {
+          symbols.filter(s => s && s.currentPrice != null).forEach(s => {
+            symbolMap.set(s.symbol, s);
+          });
+        }
+        
+        return Array.from(symbolMap.values());
+      }
+    } catch (err) {
+      console.error('[displaySymbols] Error:', err);
+      // 出错时回退到只显示有实时价格的
+      return symbols.filter((s) => s.currentPrice != null);
+    }
+  }, [symbols, backendMonitors, isGuest]);
+
+  // 用户模式下，后端数据加载完成后应用到configs
+  useEffect(() => {
+    console.log('[config effect] Called, isGuest:', isGuest, 'loadingMonitors:', loadingMonitors);
+    console.log('[config effect] symbols:', symbols);
+    console.log('[config effect] backendMonitors:', backendMonitors);
+    if (isGuest || loadingMonitors) return;
+    
+    const initial: Record<string, SymbolConfig> = {};
+    
+    // 先处理所有后端监控
+    for (const [symbol, monitor] of Object.entries(backendMonitors)) {
+      console.log('[config effect] Using backend data for', symbol);
+      initial[symbol] = {
+        enabled: monitor.enabled,
+        interval: monitor.interval,
+        maType: monitor.maType,
+        ma1Period: monitor.ma1Period,
+        ma2Period: monitor.ma2Period,
+        ma3Period: monitor.ma3Period,
+        conditions: monitor.conditions,
+        signalType: monitor.signalType,
+      };
+      // 同时同步到localStorage
+      saveConfig(assetType, symbol, initial[symbol], false, userId);
+    }
+    
+    // 再处理当前有实时价格的符号
+    for (const sym of symbols) {
+      if (!initial[sym.symbol]) {
+        console.log('[config effect] Using localStorage for', sym.symbol);
+        initial[sym.symbol] = loadConfig(assetType, sym.symbol, isGuest, userId);
+      }
+    }
+    
+    console.log('[config effect] Setting configs:', initial);
+    setConfigs(initial);
+  }, [symbols.map(s => s.symbol).join(","), assetType, isGuest, userId, backendMonitors, loadingMonitors]);
+
+  // 当有新symbol时，加载对应的配置和运行时（处理所有 displaySymbols）
   useEffect(() => {
     setConfigs((prev) => {
       const updated = { ...prev };
-      for (const sym of symbols) {
+      for (const sym of displaySymbols) {
         if (!updated[sym.symbol]) {
-          updated[sym.symbol] = loadConfig(assetType, sym.symbol);
+          updated[sym.symbol] = loadConfig(assetType, sym.symbol, isGuest, userId);
         }
       }
       return updated;
@@ -508,9 +704,9 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
 
     setRuntimes((prev) => {
       const updated = { ...prev };
-      for (const sym of symbols) {
+      for (const sym of displaySymbols) {
         if (!updated[sym.symbol]) {
-          const persistedRt = loadRuntime(assetType, sym.symbol);
+          const persistedRt = loadRuntime(assetType, sym.symbol, isGuest, userId);
           updated[sym.symbol] = {
             ma1Val: persistedRt.ma1Val,
             ma2Val: persistedRt.ma2Val,
@@ -529,7 +725,7 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
       }
       return updated;
     });
-  }, [symbols.map((s) => s.symbol).join(","), assetType]);
+  }, [displaySymbols.map((s) => s.symbol).join(","), assetType, isGuest, userId]);
 
   const getConfig = useCallback(
     (symbol: string): SymbolConfig => configs[symbol] ?? loadConfig(assetType, symbol),
@@ -887,8 +1083,6 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
     setTimeout(() => setTestStatus("idle"), 4000);
   };
 
-  const activeSymbols = symbols.filter((s) => s.currentPrice != null);
-
   return (
     <div className="rounded-2xl glass-card border-0 p-6 space-y-8">
       <div className="space-y-3 p-5 rounded-2xl glass-card border-0 mb-8">
@@ -935,11 +1129,11 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
 
       <div className="mt-6" />
 
-      {activeSymbols.length === 0 ? (
+      {displaySymbols.length === 0 ? (
         <div className="text-sm text-muted-foreground py-2">暂无追踪标的，请先在上方添加代码</div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {activeSymbols.map((sym) => {
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
+          {displaySymbols.map((sym) => {
             const cfg = getConfig(sym.symbol);
             const rt = runtimes[sym.symbol];
             const isExpanded = expanded[sym.symbol] ?? false;
