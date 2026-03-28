@@ -7,7 +7,7 @@ import { monitorScheduler } from "./monitor-scheduler";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcrypt";
-import Database from "better-sqlite3";
+import sqlite3 from "sqlite3";
 import path from "path";
 import fs from "fs";
 
@@ -46,46 +46,65 @@ async function initDatabase() {
       fs.mkdirSync(dataDir, { recursive: true });
     }
 
-    const sqlite = new Database(dbPath);
+    await new Promise<void>((resolve, reject) => {
+      const sqlite = new sqlite3.Database(dbPath, (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
 
-    sqlite.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-        is_admin INTEGER NOT NULL DEFAULT 0
-      );
-      
-      CREATE TABLE IF NOT EXISTS monitors (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        symbol TEXT NOT NULL,
-        display_name TEXT NOT NULL,
-        asset_type TEXT NOT NULL CHECK(asset_type IN ('crypto', 'ashare')),
-        enabled INTEGER NOT NULL DEFAULT 1,
-        interval TEXT NOT NULL,
-        ma_type TEXT NOT NULL CHECK(ma_type IN ('SMA', 'EMA', 'WMA')),
-        ma1_period INTEGER NOT NULL,
-        ma2_period INTEGER NOT NULL,
-        ma3_period INTEGER NOT NULL,
-        conditions TEXT NOT NULL,
-        signal_type TEXT NOT NULL CHECK(signal_type IN ('golden', 'death')),
-        dingtalk_webhook TEXT,
-        last_check_at INTEGER,
-        last_signal_at INTEGER,
-        has_sent_signal INTEGER NOT NULL DEFAULT 0,
-        prev_ma1_gt_ma2 INTEGER,
-        trend_status TEXT NOT NULL DEFAULT 'neutral' CHECK(trend_status IN ('bullish', 'bearish', 'neutral')),
-        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-        updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
-      );
-      
-      CREATE INDEX IF NOT EXISTS user_id_idx ON monitors(user_id);
-      CREATE INDEX IF NOT EXISTS symbol_idx ON monitors(symbol);
-    `);
+        sqlite.exec(`
+          CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+            is_admin INTEGER NOT NULL DEFAULT 0
+          );
+          
+          CREATE TABLE IF NOT EXISTS monitors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            symbol TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            asset_type TEXT NOT NULL CHECK(asset_type IN ('crypto', 'ashare')),
+            enabled INTEGER NOT NULL DEFAULT 1,
+            interval TEXT NOT NULL,
+            ma_type TEXT NOT NULL CHECK(ma_type IN ('SMA', 'EMA', 'WMA')),
+            ma1_period INTEGER NOT NULL,
+            ma2_period INTEGER NOT NULL,
+            ma3_period INTEGER NOT NULL,
+            conditions TEXT NOT NULL,
+            signal_type TEXT NOT NULL CHECK(signal_type IN ('golden', 'death')),
+            dingtalk_webhook TEXT,
+            last_check_at INTEGER,
+            last_signal_at INTEGER,
+            has_sent_signal INTEGER NOT NULL DEFAULT 0,
+            prev_ma1_gt_ma2 INTEGER,
+            trend_status TEXT NOT NULL DEFAULT 'neutral' CHECK(trend_status IN ('bullish', 'bearish', 'neutral')),
+            created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+            updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+          );
+          
+          CREATE INDEX IF NOT EXISTS user_id_idx ON monitors(user_id);
+          CREATE INDEX IF NOT EXISTS symbol_idx ON monitors(symbol);
+        `, (execErr) => {
+          if (execErr) {
+            reject(execErr);
+            return;
+          }
 
-    sqlite.close();
+          sqlite.close((closeErr) => {
+            if (closeErr) {
+              reject(closeErr);
+              return;
+            }
+            resolve();
+          });
+        });
+      });
+    });
+
     logger.info("✅ 数据库表创建成功");
   } catch (error) {
     logger.error({ err: error }, "创建数据库表失败");
