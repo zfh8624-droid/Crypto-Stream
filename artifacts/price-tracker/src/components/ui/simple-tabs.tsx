@@ -25,10 +25,12 @@ interface SimpleTabsContentProps {
   className?: string;
 }
 
-const TabsContext = React.createContext<{
+interface TabsContextType {
   value: string;
   onValueChange: (value: string) => void;
-} | null>(null);
+}
+
+const TabsContext = React.createContext<TabsContextType | null>(null);
 
 export function SimpleTabs({ 
   defaultValue, 
@@ -89,7 +91,13 @@ export function SimpleTabsContent({ value, children, className }: SimpleTabsCont
   const context = React.useContext(TabsContext);
   if (!context) throw new Error("SimpleTabsContent must be used within SimpleTabs");
   
-  if (context.value !== value) return null;
+  const isActive = context.value === value;
   
-  return <div className={className}>{children}</div>;
+  if (!isActive) return null;
+  
+  return (
+    <div className={className}>
+      {children}
+    </div>
+  );
 }

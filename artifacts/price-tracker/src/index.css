@@ -77,15 +77,15 @@
   /* 主背景 - 柔和浅灰 */
   --background: 220 15% 92%;
   --foreground: 220 25% 20%;
-  --border: 220 15% 80%;
+  --border: 220 20% 70%;
   /* 卡片 - 柔和白色 */
   --card: 0 0% 98%;
   --card-foreground: 220 25% 20%;
-  --card-border: 220 15% 85%;
+  --card-border: 220 20% 75%;
   /* 侧边栏 */
   --sidebar: 0 0% 100%;
   --sidebar-foreground: 220 25% 20%;
-  --sidebar-border: 220 15% 88%;
+  --sidebar-border: 220 20% 78%;
   /* 主色调 - 薄荷青 */
   --sidebar-primary: 173 80% 40%;
   --sidebar-primary-foreground: 0 0% 100%;
@@ -95,7 +95,7 @@
   /* 弹出框 */
   --popover: 0 0% 100%;
   --popover-foreground: 220 25% 20%;
-  --popover-border: 220 15% 88%;
+  --popover-border: 220 20% 78%;
   /* 主色调 - 薄荷青 */
   --primary: 173 80% 40%;
   --primary-foreground: 0 0% 100%;
@@ -163,13 +163,13 @@
 
   --background: 220 15% 92%;
   --foreground: 220 25% 20%;
-  --border: 220 15% 80%;
+  --border: 220 20% 70%;
   --card: 0 0% 98%;
   --card-foreground: 220 25% 20%;
-  --card-border: 220 15% 85%;
+  --card-border: 220 20% 75%;
   --sidebar: 0 0% 98%;
   --sidebar-foreground: 220 25% 20%;
-  --sidebar-border: 220 15% 85%;
+  --sidebar-border: 220 20% 78%;
   --sidebar-primary: 173 80% 40%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 220 15% 90%;
@@ -177,7 +177,7 @@
   --sidebar-ring: 173 80% 40%;
   --popover: 0 0% 98%;
   --popover-foreground: 220 25% 20%;
-  --popover-border: 220 15% 85%;
+  --popover-border: 220 20% 78%;
   --primary: 173 80% 40%;
   --primary-foreground: 0 0% 100%;
   --secondary: 340 70% 92%;
@@ -243,7 +243,7 @@
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(226, 232, 240, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.8);
   box-shadow: 
     0 4px 12px 0 rgba(0, 0, 0, 0.04),
     0 1px 2px 0 rgba(0, 0, 0, 0.02);
@@ -313,7 +313,6 @@
 
 .particle {
   position: absolute;
-  color: rgba(20, 184, 166, 0.4);
   font-weight: 500;
   animation: particleFloat 20s infinite linear;
   display: flex;
@@ -323,13 +322,13 @@
 
 @keyframes particleFloat {
   0% {
-    transform: translateY(0) rotate(0deg);
+    transform: translate(0, 0) rotate(0deg);
     opacity: 0;
   }
   5% { opacity: 1; }
   95% { opacity: 1; }
   100% {
-    transform: translateY(-200vh) rotate(720deg);
+    transform: translate(var(--drift-x, 0), -200vh) rotate(var(--rotate, 360deg));
     opacity: 0;
   }
 }

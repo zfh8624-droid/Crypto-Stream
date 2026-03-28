@@ -708,14 +708,23 @@ function AShareTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => 
 
 function ParticlesBackground({ activeTab }: { activeTab: string }) {
   const currencySymbol = activeTab === "ashare" ? "¥" : "$";
-  const particles = Array.from({ length: 30 }, (_, i) => ({
-    id: i,
-    left: `${Math.random() * 100}%`,
-    top: `${Math.random() * 200}%`,
-    animationDelay: `-${Math.random() * 20}s`,
-    animationDuration: `${15 + Math.random() * 10}s`,
-    size: 10 + Math.random() * 8,
-  }));
+  const particleColor = activeTab === "ashare" 
+    ? "rgba(239, 68, 68, 0.4)" 
+    : "rgba(20, 184, 166, 0.4)";
+  const particles = Array.from({ length: 30 }, (_, i) => {
+    const driftX = (Math.random() - 0.5) * 100;
+    const rotate = (Math.random() - 0.5) * 720;
+    return {
+      id: i,
+      left: `${Math.random() * 100}%`,
+      top: `${Math.random() * 200}%`,
+      animationDelay: `-${Math.random() * 20}s`,
+      animationDuration: `${15 + Math.random() * 15}s`,
+      size: 10 + Math.random() * 8,
+      driftX,
+      rotate,
+    };
+  });
 
   return (
     <div className="particles-container">
@@ -729,7 +738,10 @@ function ParticlesBackground({ activeTab }: { activeTab: string }) {
             animationDelay: p.animationDelay,
             animationDuration: p.animationDuration,
             fontSize: `${p.size}px`,
-          }}
+            color: particleColor,
+            '--drift-x': `${p.driftX}px`,
+            '--rotate': `${p.rotate}deg`,
+          } as React.CSSProperties}
         >
           {currencySymbol}
         </div>
