@@ -347,21 +347,21 @@ function SymbolInput({
   };
 
   return (
-    <div className="space-y-2">
-      <Label className="text-base font-bold text-slate-800 dark:text-slate-200">{label}</Label>
-      <div className="flex gap-2">
+    <div className="p-5 rounded-2xl glass-card border-0">
+      <Label className="text-base font-bold text-foreground">{label}</Label>
+      <div className="mt-6 flex gap-2">
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleAdd()}
           placeholder={placeholder}
-          className={`flex-1 text-sm font-mono ${uppercase ? "uppercase" : ""} bg-white/10 dark:bg-black/10 border-2 border-cyan-500/50 dark:border-cyan-400/50 shadow-[0_0_10px_rgba(0,255,255,0.2)]`}
+          className={`flex-1 text-sm font-mono ${uppercase ? "uppercase" : ""} bg-white/5 dark:bg-black/5 border-2 border-teal-500/40 dark:border-teal-400/40`}
         />
         <Button 
           variant="outline" 
           size="sm" 
           onClick={handleAdd}
-          className="border-2 border-green-500/70 text-green-600 dark:text-green-400 hover:bg-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.3)]"
+          className="border-2 border-teal-500/60 text-teal-600 hover:bg-teal-500/10"
         >
           添加
         </Button>
@@ -373,12 +373,13 @@ function SymbolInput({
 
 function WSConfigPanel({
   wsUrl, onWsUrlChange, token, onTokenChange, showToken, label, urlPlaceholder,
-  tokenPlaceholder, readOnly, extra,
+  tokenPlaceholder, readOnly, extra, className,
 }: {
   wsUrl: string; onWsUrlChange: (v: string) => void; token?: string;
   onTokenChange?: (v: string) => void; showToken?: boolean; label: string;
   urlPlaceholder: string; tokenPlaceholder?: string; readOnly?: boolean;
   extra?: React.ReactNode;
+  className?: string;
 }) {
   const [editUrl, setEditUrl] = useState(wsUrl);
   const isDirty = editUrl !== wsUrl;
@@ -393,9 +394,9 @@ function WSConfigPanel({
   };
 
   return (
-    <div className="space-y-3 p-5 rounded-2xl glass-card border-0">
+    <div className={`space-y-3 p-5 rounded-2xl glass-card border-0 ${className ?? ''}`}>
       {dialog}
-      <div className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+      <div className="text-sm font-bold text-foreground flex items-center gap-2">
         <span>⚡</span>
         {label} WebSocket 配置
       </div>
@@ -406,7 +407,7 @@ function WSConfigPanel({
             value={wsUrl}
             readOnly
             placeholder={urlPlaceholder}
-            className="text-xs font-mono bg-white/10 dark:bg-black/10 border-2 border-cyan-500/50 dark:border-cyan-400/50 shadow-[0_0_10px_rgba(0,255,255,0.2)]"
+            className="text-xs font-mono bg-white/5 dark:bg-black/5 border-2 border-teal-500/40 dark:border-teal-400/40"
           />
         ) : (
           <div className="flex gap-2">
@@ -415,14 +416,14 @@ function WSConfigPanel({
               onChange={(e) => setEditUrl(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleApply()}
               placeholder={urlPlaceholder}
-              className="text-xs font-mono flex-1 bg-white/10 dark:bg-black/10 border-2 border-cyan-500/50 dark:border-cyan-400/50 shadow-[0_0_10px_rgba(0,255,255,0.2)]"
+              className="text-xs font-mono flex-1 bg-white/5 dark:bg-black/5 border-2 border-teal-500/40 dark:border-teal-400/40"
             />
             <Button
               size="sm"
               variant="outline"
               disabled={!isDirty}
               onClick={handleApply}
-              className={`border-2 border-blue-500/70 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.3)] ${!isDirty ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`border-2 border-teal-500/60 text-teal-600 hover:bg-teal-500/10 ${!isDirty ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               确认修改
             </Button>
@@ -518,13 +519,14 @@ function CryptoTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => 
       <WSConfigPanel
         label="Binance 加密货币" wsUrl={wsUrl} onWsUrlChange={setWsUrl}
         urlPlaceholder={defaultWsUrl}
+        className="mb-8"
       />
       <SymbolInput
         label="交易对（自动添加 USDT）" symbols={symbols}
         onAdd={addSymbol} onRemove={removeSymbol} placeholder="例如 DOGE" uppercase
       />
-      <div className="flex items-center justify-between">
-        <span className="text-lg font-bold text-slate-800 dark:text-slate-200">实时价格</span>
+      <div className="mt-8 flex items-center justify-between">
+        <span className="text-lg font-bold text-foreground">实时价格</span>
         <StatusDot status={status} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -539,7 +541,9 @@ function CryptoTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => 
           />
         ))}
       </div>
-      <GoldenCrossMonitor assetType="crypto" symbols={monitoredSymbols} />
+      <div className="mt-8">
+        <GoldenCrossMonitor assetType="crypto" symbols={monitoredSymbols} />
+      </div>
     </div>
   );
 }
@@ -577,6 +581,7 @@ function StockTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => v
         label="Finnhub 股票" wsUrl={wsUrl} onWsUrlChange={setWsUrl}
         showToken token={token} onTokenChange={setToken}
         urlPlaceholder={DEFAULT_FINNHUB_WS} tokenPlaceholder="例如：cxxx..."
+        className="mb-8"
       />
       {!token && (
         <div className="rounded-lg border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/30 dark:border-yellow-800 p-3 text-sm text-yellow-800 dark:text-yellow-300">
@@ -589,8 +594,8 @@ function StockTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => v
         label="股票代码" symbols={symbols} onAdd={addSymbol}
         onRemove={removeSymbol} placeholder="例如 NVDA" uppercase
       />
-      <div className="flex items-center justify-between">
-        <span className="text-lg font-bold text-slate-800 dark:text-slate-200">实时价格（仅交易时段）</span>
+      <div className="mt-8 flex items-center justify-between">
+        <span className="text-lg font-bold text-foreground">实时价格（仅交易时段）</span>
         <StatusDot status={status} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -639,6 +644,7 @@ function AShareTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => 
       <WSConfigPanel
         label="A股行情 (新浪财经数据源)" wsUrl={wsUrl} onWsUrlChange={() => {}}
         readOnly urlPlaceholder=""
+        className="mb-8"
         extra={
           <div className="text-xs text-muted-foreground pt-1">
             数据来源：新浪财经免费接口，后端代理推送，每 2 秒更新一次。仅交易时段有数据（周一至周五 9:30–15:00）。
@@ -649,25 +655,25 @@ function AShareTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => 
         label="代码格式：sh+沪市代码 / sz+深市代码" symbols={symbols}
         onAdd={addSymbol} onRemove={removeSymbol} placeholder="例如 sh510300 / sz000001"
       />
-      <div className="rounded-2xl glass-card border-0 p-3 sm:p-4 text-xs text-slate-700 dark:text-slate-300 space-y-2">
-        <div className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+      <div className="mt-6 rounded-2xl glass-card border-0 p-3 sm:p-4 text-xs text-foreground space-y-2">
+        <div className="text-base sm:text-lg font-bold text-foreground flex items-center gap-2">
           <span>📚</span>
           常用代码参考
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-2 sm:gap-x-4 gap-y-1 font-mono">
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sh510300 沪深300ETF</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sh510500 中证500ETF</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sh510050 上证50ETF</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sh159919 沪深300ETF(嘉实)</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sh600519 贵州茅台</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sh601318 中国平安</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sz000001 平安银行</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sz300750 宁德时代</span>
-          <span className="bg-white/20 dark:bg-black/20 px-2 py-1 rounded text-[10px] sm:text-xs truncate">sh688981 中芯国际</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sh510300 沪深300ETF</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sh510500 中证500ETF</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sh510050 上证50ETF</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sh159919 沪深300ETF(嘉实)</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sh600519 贵州茅台</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sh601318 中国平安</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sz000001 平安银行</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sz300750 宁德时代</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sh688981 中芯国际</span>
         </div>
       </div>
-      <div className="flex items-center justify-between">
-        <span className="text-lg font-bold text-slate-800 dark:text-slate-200">实时行情</span>
+      <div className="mt-8 flex items-center justify-between">
+        <span className="text-lg font-bold text-foreground">实时行情</span>
         <StatusDot status={status} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -693,7 +699,9 @@ function AShareTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => 
           )
         )}
       </div>
-      <GoldenCrossMonitor assetType="ashare" symbols={monitoredSymbols} />
+      <div className="mt-8">
+        <GoldenCrossMonitor assetType="ashare" symbols={monitoredSymbols} />
+      </div>
     </div>
   );
 }
@@ -703,7 +711,8 @@ function ParticlesBackground({ activeTab }: { activeTab: string }) {
   const particles = Array.from({ length: 30 }, (_, i) => ({
     id: i,
     left: `${Math.random() * 100}%`,
-    animationDelay: `${Math.random() * 15}s`,
+    top: `${Math.random() * 200}%`,
+    animationDelay: `-${Math.random() * 20}s`,
     animationDuration: `${15 + Math.random() * 10}s`,
     size: 10 + Math.random() * 8,
   }));
@@ -716,6 +725,7 @@ function ParticlesBackground({ activeTab }: { activeTab: string }) {
           className="particle"
           style={{
             left: p.left,
+            top: p.top,
             animationDelay: p.animationDelay,
             animationDuration: p.animationDuration,
             fontSize: `${p.size}px`,
@@ -755,19 +765,15 @@ export default function Home() {
   
   return (
     <div className="min-h-screen bg-background text-foreground relative overflow-hidden">
-      <ParticlesBackground activeTab={activeTab} />
-      <div className="gradient-bg absolute inset-0 opacity-20 dark:opacity-40" />
+      <div className="gradient-bg absolute inset-0 opacity-100" />
       <div className="max-w-5xl mx-auto px-3 sm:px-4 py-6 sm:py-8 space-y-4 sm:space-y-6 relative z-10">
         <div className="text-center float-animation">
-          <h1 className="text-2xl sm:text-4xl font-bold tracking-tight neon-title">
-            🚀 实时价格追踪
+          <h1 className="text-2xl sm:text-4xl font-bold tracking-tight gradient-title">
+            🚀 盯盘系统
           </h1>
-          <p className="text-muted-foreground mt-2 text-xs sm:text-sm">
-            通过 WebSocket 长连接实时获取加密货币、美股和A股价格，支持金叉信号钉钉推送
-          </p>
         </div>
         <Separator className="opacity-50" />
-        <SimpleTabs defaultValue="ashare" value={activeTab} onValueChange={setActiveTab} className="pulse-border">
+        <SimpleTabs defaultValue="ashare" value={activeTab} onValueChange={setActiveTab} className="glow-border">
           <SimpleTabsList className="mb-3 sm:mb-4 glass-card p-1">
             <SimpleTabsTrigger 
               value="ashare" 
@@ -799,6 +805,7 @@ export default function Home() {
           </SimpleTabsContent>
         </SimpleTabs>
       </div>
+      <ParticlesBackground activeTab={activeTab} />
 
       {/* 删除确认对话框 */}
       <Dialog open={deleteConfirm.open} onOpenChange={cancelDelete}>

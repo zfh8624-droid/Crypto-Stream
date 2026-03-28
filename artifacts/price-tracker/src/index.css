@@ -66,61 +66,74 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* LIGHT MODE */
+/* 清新风格 - 默认主题 */
 :root {
-  --button-outline: rgba(0,0,0, .10);
-  --badge-outline: rgba(0,0,0, .05);
-  --opaque-button-border-intensity: -8;
-  --elevate-1: rgba(0,0,0, .03);
-  --elevate-2: rgba(0,0,0, .08);
+  --button-outline: rgba(20, 184, 166, .18);
+  --badge-outline: rgba(20, 184, 166, .12);
+  --opaque-button-border-intensity: 6;
+  --elevate-1: rgba(20, 184, 166, .08);
+  --elevate-2: rgba(20, 184, 166, .14);
 
-  --background: 220 20% 97%;
-  --foreground: 222 47% 11%;
-  --border: 220 13% 88%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --card-border: 220 13% 90%;
-  --sidebar: 220 20% 95%;
-  --sidebar-foreground: 222 47% 11%;
-  --sidebar-border: 220 13% 88%;
-  --sidebar-primary: 221 83% 53%;
+  /* 主背景 - 柔和浅灰 */
+  --background: 220 15% 92%;
+  --foreground: 220 25% 20%;
+  --border: 220 15% 80%;
+  /* 卡片 - 柔和白色 */
+  --card: 0 0% 98%;
+  --card-foreground: 220 25% 20%;
+  --card-border: 220 15% 85%;
+  /* 侧边栏 */
+  --sidebar: 0 0% 100%;
+  --sidebar-foreground: 220 25% 20%;
+  --sidebar-border: 220 15% 88%;
+  /* 主色调 - 薄荷青 */
+  --sidebar-primary: 173 80% 40%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 220 14% 92%;
-  --sidebar-accent-foreground: 222 47% 11%;
-  --sidebar-ring: 221 83% 53%;
+  --sidebar-accent: 220 15% 95%;
+  --sidebar-accent-foreground: 220 25% 20%;
+  --sidebar-ring: 173 80% 40%;
+  /* 弹出框 */
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --popover-border: 220 13% 88%;
-  --primary: 221 83% 53%;
+  --popover-foreground: 220 25% 20%;
+  --popover-border: 220 15% 88%;
+  /* 主色调 - 薄荷青 */
+  --primary: 173 80% 40%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 220 14% 92%;
-  --secondary-foreground: 222 47% 25%;
-  --muted: 220 14% 94%;
-  --muted-foreground: 220 9% 46%;
-  --accent: 220 14% 92%;
-  --accent-foreground: 222 47% 11%;
-  --destructive: 0 84% 60%;
+  /* 次要色 - 柔和粉 */
+  --secondary: 340 70% 92%;
+  --secondary-foreground: 340 40% 35%;
+  /* 静音色 */
+  --muted: 220 15% 96%;
+  --muted-foreground: 220 15% 45%;
+  /* 强调色 - 柔和橙 */
+  --accent: 25 80% 92%;
+  --accent-foreground: 25 40% 35%;
+  /* 危险色 */
+  --destructive: 0 70% 60%;
   --destructive-foreground: 0 0% 100%;
-  --input: 220 13% 88%;
-  --ring: 221 83% 53%;
-  --chart-1: 221 83% 53%;
-  --chart-2: 160 60% 45%;
-  --chart-3: 30 80% 55%;
-  --chart-4: 280 65% 60%;
-  --chart-5: 340 75% 55%;
+  /* 输入框 */
+  --input: 220 15% 96%;
+  --ring: 173 80% 40%;
+  /* 图表颜色 - 清新配色 */
+  --chart-1: 173 80% 40%;
+  --chart-2: 200 70% 55%;
+  --chart-3: 340 70% 60%;
+  --chart-4: 45 80% 55%;
+  --chart-5: 145 60% 50%;
 
-  --app-font-sans: 'Inter', sans-serif;
+  --app-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --app-font-serif: Georgia, serif;
-  --app-font-mono: 'Fira Code', Menlo, monospace;
-  --radius: .5rem;
-  --shadow-2xs: 0px 1px 2px 0px rgba(0,0,0,0.04);
-  --shadow-xs: 0px 1px 3px 0px rgba(0,0,0,0.06);
-  --shadow-sm: 0px 1px 3px 0px rgba(0,0,0,0.08), 0px 1px 2px -1px rgba(0,0,0,0.06);
-  --shadow: 0px 2px 4px 0px rgba(0,0,0,0.08), 0px 1px 2px -1px rgba(0,0,0,0.06);
-  --shadow-md: 0px 4px 6px -1px rgba(0,0,0,0.08), 0px 2px 4px -2px rgba(0,0,0,0.05);
-  --shadow-lg: 0px 10px 15px -3px rgba(0,0,0,0.08), 0px 4px 6px -4px rgba(0,0,0,0.05);
-  --shadow-xl: 0px 20px 25px -5px rgba(0,0,0,0.08), 0px 8px 10px -6px rgba(0,0,0,0.05);
-  --shadow-2xl: 0px 25px 50px -12px rgba(0,0,0,0.18);
+  --app-font-mono: 'SF Mono', 'Fira Code', Menlo, monospace;
+  --radius: 0.75rem;
+  /* 柔和阴影 */
+  --shadow-2xs: 0px 1px 2px 0px rgba(0, 0, 0, 0.05);
+  --shadow-xs: 0px 1px 3px 0px rgba(0, 0, 0, 0.08);
+  --shadow-sm: 0px 1px 3px 0px rgba(0, 0, 0, 0.10), 0px 1px 2px -1px rgba(0, 0, 0, 0.06);
+  --shadow: 0px 2px 4px 0px rgba(0, 0, 0, 0.12), 0px 1px 2px -1px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0px 4px 6px -1px rgba(0, 0, 0, 0.14), 0px 2px 4px -2px rgba(0, 0, 0, 0.10);
+  --shadow-lg: 0px 10px 15px -3px rgba(0, 0, 0, 0.16), 0px 4px 6px -4px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0px 20px 25px -5px rgba(0, 0, 0, 0.18), 0px 8px 10px -6px rgba(0, 0, 0, 0.14);
+  --shadow-2xl: 0px 25px 50px -12px rgba(0, 0, 0, 0.20);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
@@ -140,56 +153,56 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
+/* 保持.dark类与默认主题一致 */
 .dark {
-  --button-outline: rgba(255,255,255, .10);
-  --badge-outline: rgba(255,255,255, .05);
-  --opaque-button-border-intensity: 9;
-  --elevate-1: rgba(255,255,255, .04);
-  --elevate-2: rgba(255,255,255, .09);
+  --button-outline: rgba(20, 184, 166, .18);
+  --badge-outline: rgba(20, 184, 166, .12);
+  --opaque-button-border-intensity: 6;
+  --elevate-1: rgba(20, 184, 166, .08);
+  --elevate-2: rgba(20, 184, 166, .14);
 
-  --background: 222 47% 8%;
-  --foreground: 210 40% 95%;
-  --border: 217 33% 20%;
-  --card: 222 47% 11%;
-  --card-foreground: 210 40% 95%;
-  --card-border: 217 33% 20%;
-  --sidebar: 222 47% 9%;
-  --sidebar-foreground: 210 40% 95%;
-  --sidebar-border: 217 33% 20%;
-  --sidebar-primary: 217 91% 60%;
-  --sidebar-primary-foreground: 222 47% 8%;
-  --sidebar-accent: 217 33% 17%;
-  --sidebar-accent-foreground: 210 40% 95%;
-  --sidebar-ring: 217 91% 60%;
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 95%;
-  --popover-border: 217 33% 20%;
-  --primary: 217 91% 60%;
-  --primary-foreground: 222 47% 8%;
-  --secondary: 217 33% 17%;
-  --secondary-foreground: 210 40% 95%;
-  --muted: 217 33% 14%;
-  --muted-foreground: 215 20% 55%;
-  --accent: 217 33% 17%;
-  --accent-foreground: 210 40% 95%;
-  --destructive: 0 72% 51%;
+  --background: 220 15% 92%;
+  --foreground: 220 25% 20%;
+  --border: 220 15% 80%;
+  --card: 0 0% 98%;
+  --card-foreground: 220 25% 20%;
+  --card-border: 220 15% 85%;
+  --sidebar: 0 0% 98%;
+  --sidebar-foreground: 220 25% 20%;
+  --sidebar-border: 220 15% 85%;
+  --sidebar-primary: 173 80% 40%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 220 15% 90%;
+  --sidebar-accent-foreground: 220 25% 20%;
+  --sidebar-ring: 173 80% 40%;
+  --popover: 0 0% 98%;
+  --popover-foreground: 220 25% 20%;
+  --popover-border: 220 15% 85%;
+  --primary: 173 80% 40%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 340 70% 92%;
+  --secondary-foreground: 340 40% 35%;
+  --muted: 220 15% 96%;
+  --muted-foreground: 220 15% 45%;
+  --accent: 25 80% 92%;
+  --accent-foreground: 25 40% 35%;
+  --destructive: 0 70% 60%;
   --destructive-foreground: 0 0% 100%;
-  --input: 217 33% 20%;
-  --ring: 217 91% 60%;
-  --chart-1: 217 91% 60%;
-  --chart-2: 160 60% 45%;
-  --chart-3: 30 80% 55%;
-  --chart-4: 280 65% 60%;
-  --chart-5: 340 75% 55%;
-
-  --shadow-2xs: 0px 1px 2px 0px rgba(0,0,0,0.20);
-  --shadow-xs: 0px 1px 3px 0px rgba(0,0,0,0.25);
-  --shadow-sm: 0px 1px 3px 0px rgba(0,0,0,0.30), 0px 1px 2px -1px rgba(0,0,0,0.25);
-  --shadow: 0px 2px 4px 0px rgba(0,0,0,0.30), 0px 1px 2px -1px rgba(0,0,0,0.25);
-  --shadow-md: 0px 4px 6px -1px rgba(0,0,0,0.30), 0px 2px 4px -2px rgba(0,0,0,0.20);
-  --shadow-lg: 0px 10px 15px -3px rgba(0,0,0,0.30), 0px 4px 6px -4px rgba(0,0,0,0.20);
-  --shadow-xl: 0px 20px 25px -5px rgba(0,0,0,0.30), 0px 8px 10px -6px rgba(0,0,0,0.20);
-  --shadow-2xl: 0px 25px 50px -12px rgba(0,0,0,0.50);
+  --input: 220 15% 96%;
+  --ring: 173 80% 40%;
+  --chart-1: 173 80% 40%;
+  --chart-2: 200 70% 55%;
+  --chart-3: 340 70% 60%;
+  --chart-4: 45 80% 55%;
+  --chart-5: 145 60% 50%;
+  --shadow-2xs: 0px 1px 2px 0px rgba(0, 0, 0, 0.05);
+  --shadow-xs: 0px 1px 3px 0px rgba(0, 0, 0, 0.08);
+  --shadow-sm: 0px 1px 3px 0px rgba(0, 0, 0, 0.10), 0px 1px 2px -1px rgba(0, 0, 0, 0.06);
+  --shadow: 0px 2px 4px 0px rgba(0, 0, 0, 0.12), 0px 1px 2px -1px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0px 4px 6px -1px rgba(0, 0, 0, 0.14), 0px 2px 4px -2px rgba(0, 0, 0, 0.10);
+  --shadow-lg: 0px 10px 15px -3px rgba(0, 0, 0, 0.16), 0px 4px 6px -4px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0px 20px 25px -5px rgba(0, 0, 0, 0.18), 0px 8px 10px -6px rgba(0, 0, 0, 0.14);
+  --shadow-2xl: 0px 25px 50px -12px rgba(0, 0, 0, 0.20);
 }
 
 @layer base {
@@ -202,84 +215,68 @@
   }
 }
 
-/* 炫酷的科技风渐变背景 */
+/* 清新渐变背景 */
 .gradient-bg {
-  background: linear-gradient(135deg, 
-    #0f172a 0%, 
-    #1e293b 25%, 
-    #0f172a 50%,
-    #1e3a5f 75%,
-    #0f172a 100%);
-  background-size: 400% 400%;
-  animation: gradientShift 20s ease infinite;
+  background: linear-gradient(180deg, 
+    #e8ecf1 0%, 
+    #e2e8f0 50%,
+    #dde6ed 100%);
+  position: relative;
 }
 
-.dark .gradient-bg {
-  background: linear-gradient(135deg, 
-    #000000 0%, 
-    #0a0a0a 25%, 
-    #111111 50%,
-    #0a0a0a 75%,
-    #000000 100%);
-  background-size: 400% 400%;
-  animation: gradientShift 20s ease infinite;
+.gradient-bg::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    radial-gradient(circle at 20% 20%, rgba(20, 184, 166, 0.06) 0%, transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(59, 130, 246, 0.04) 0%, transparent 40%);
+  pointer-events: none;
+  z-index: 0;
 }
 
-@keyframes gradientShift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-/* 玻璃拟态效果 */
+/* 清新卡片 */
 .glass-card {
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 
+    0 4px 12px 0 rgba(0, 0, 0, 0.04),
+    0 1px 2px 0 rgba(0, 0, 0, 0.02);
+  position: relative;
 }
 
-.dark .glass-card {
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+/* 清新渐变标题 */
+.gradient-title {
+  font-weight: 700;
+  background: linear-gradient(135deg, 
+    #14b8a6 0%, 
+    #3b82f6 50%,
+    #14b8a6 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradientText 8s ease-in-out infinite;
 }
 
-/* 科技风标题 */
-.neon-title {
-  color: #1e293b;
-  font-weight: 900;
-}
-
-.dark .neon-title {
-  color: #f1f5f9;
-}
-
-@keyframes neonGlow {
-  to { background-position: 200% center; }
+@keyframes gradientText {
+  0%, 100% { background-position: 0% center; }
+  50% { background-position: 100% center; }
 }
 
 /* 浮动动画 */
 .float-animation {
-  animation: float 3s ease-in-out infinite;
+  animation: float 5s ease-in-out infinite;
 }
 
 @keyframes float {
   0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
-}
-
-/* 脉冲发光边框 */
-.pulse-border {
-  animation: pulseBorder 2s ease-in-out infinite;
-}
-
-@keyframes pulseBorder {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 172, 254, 0.4); }
-  50% { box-shadow: 0 0 0 10px rgba(79, 172, 254, 0); }
+  50% { transform: translateY(-6px); }
 }
 
 /* 价格卡片悬停效果 */
@@ -288,8 +285,8 @@
 }
 
 .price-card-hover:hover {
-  transform: translateY(-5px) scale(1.02);
-  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.10);
 }
 
 /* 数字跳动效果 */
@@ -298,11 +295,11 @@
 }
 
 @keyframes numberFlash {
-  0% { transform: scale(1.2); }
+  0% { transform: scale(1.1); }
   100% { transform: scale(1); }
 }
 
-/* 粒子背景 */
+/* 清新粒子背景 */
 .particles-container {
   position: fixed;
   top: 0;
@@ -310,15 +307,15 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 0;
+  z-index: 20;
   overflow: hidden;
 }
 
 .particle {
   position: absolute;
-  color: rgba(100, 100, 100, 0.5);
-  font-weight: bold;
-  animation: particleFloat 15s infinite linear;
+  color: rgba(20, 184, 166, 0.4);
+  font-weight: 500;
+  animation: particleFloat 20s infinite linear;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -326,13 +323,13 @@
 
 @keyframes particleFloat {
   0% {
-    transform: translateY(100vh) rotate(0deg);
+    transform: translateY(0) rotate(0deg);
     opacity: 0;
   }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
+  5% { opacity: 1; }
+  95% { opacity: 1; }
   100% {
-    transform: translateY(-100vh) rotate(720deg);
+    transform: translateY(-200vh) rotate(720deg);
     opacity: 0;
   }
 }

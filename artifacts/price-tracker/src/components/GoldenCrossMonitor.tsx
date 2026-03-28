@@ -366,9 +366,9 @@ function ConditionEditor({
 }) {
   const sel = "h-7 rounded border border-input bg-background px-1.5 text-xs focus:outline-none";
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
+    <div className="flex items-center flex-wrap">
       <select
-        className={sel}
+        className={`${sel} mr-4`}
         value={cond.left}
         onChange={(e) => onChange({ ...cond, left: e.target.value as Side })}
       >
@@ -377,7 +377,7 @@ function ConditionEditor({
         ))}
       </select>
       <select
-        className={`${sel} w-10`}
+        className={`${sel} w-10 mr-4`}
         value={cond.op}
         onChange={(e) => onChange({ ...cond, op: e.target.value as Op })}
       >
@@ -386,7 +386,7 @@ function ConditionEditor({
         ))}
       </select>
       <select
-        className={sel}
+        className={`${sel} mr-4`}
         value={cond.right}
         onChange={(e) => onChange({ ...cond, right: e.target.value as Side })}
       >
@@ -396,7 +396,7 @@ function ConditionEditor({
       </select>
       {canRemove && (
         <button
-          className="text-muted-foreground hover:text-red-500 transition-colors"
+          className="text-muted-foreground hover:text-red-500 transition-colors ml-6"
           onClick={onRemove}
           title="删除条件"
         >
@@ -451,8 +451,34 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
   const isCrypto = assetType === "crypto";
   const isCNY = assetType === "ashare";
 
-  const [configs, setConfigs] = useState<Record<string, SymbolConfig>>({});
-  const [runtimes, setRuntimes] = useState<Record<string, SymbolRuntime>>({});
+  const [configs, setConfigs] = useState<Record<string, SymbolConfig>>(() => {
+    const initial: Record<string, SymbolConfig> = {};
+    for (const sym of symbols) {
+      initial[sym.symbol] = loadConfig(assetType, sym.symbol);
+    }
+    return initial;
+  });
+  const [runtimes, setRuntimes] = useState<Record<string, SymbolRuntime>>(() => {
+    const initial: Record<string, SymbolRuntime> = {};
+    for (const sym of symbols) {
+      const persistedRt = loadRuntime(assetType, sym.symbol);
+      initial[sym.symbol] = {
+        ma1Val: persistedRt.ma1Val,
+        ma2Val: persistedRt.ma2Val,
+        ma3Val: persistedRt.ma3Val,
+        condResults: persistedRt.condResults,
+        isGolden: persistedRt.isGolden,
+        inSignal: persistedRt.inSignal,
+        lastCheck: null,
+        error: null,
+        loading: false,
+        prevMa1GtMa2: persistedRt.prevMa1GtMa2,
+        hasSentSignal: persistedRt.hasSentSignal,
+        trendStatus: persistedRt.trendStatus,
+      };
+    }
+    return initial;
+  });
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [testStatus, setTestStatus] = useState<"idle" | "sending" | "ok" | "err">("idle");
   const [testMsg, setTestMsg] = useState("");
@@ -468,62 +494,47 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
   const symbolsRef = useRef(symbols);
   symbolsRef.current = symbols;
 
+  // 当有新symbol时，加载对应的配置和运行时
+  useEffect(() => {
+    setConfigs((prev) => {
+      const updated = { ...prev };
+      for (const sym of symbols) {
+        if (!updated[sym.symbol]) {
+          updated[sym.symbol] = loadConfig(assetType, sym.symbol);
+        }
+      }
+      return updated;
+    });
+
+    setRuntimes((prev) => {
+      const updated = { ...prev };
+      for (const sym of symbols) {
+        if (!updated[sym.symbol]) {
+          const persistedRt = loadRuntime(assetType, sym.symbol);
+          updated[sym.symbol] = {
+            ma1Val: persistedRt.ma1Val,
+            ma2Val: persistedRt.ma2Val,
+            ma3Val: persistedRt.ma3Val,
+            condResults: persistedRt.condResults,
+            isGolden: persistedRt.isGolden,
+            inSignal: persistedRt.inSignal,
+            lastCheck: null,
+            error: null,
+            loading: false,
+            prevMa1GtMa2: persistedRt.prevMa1GtMa2,
+            hasSentSignal: persistedRt.hasSentSignal,
+            trendStatus: persistedRt.trendStatus,
+          };
+        }
+      }
+      return updated;
+    });
+  }, [symbols.map((s) => s.symbol).join(","), assetType]);
+
   const getConfig = useCallback(
     (symbol: string): SymbolConfig => configs[symbol] ?? loadConfig(assetType, symbol),
     [configs, assetType]
   );
-
-  useEffect(() => {
-    const missing = symbols.filter((s) => !(s.symbol in configs));
-    if (missing.length === 0) return;
-    setConfigs((prev) => {
-      const next = { ...prev };
-      for (const sym of missing) next[sym.symbol] = loadConfig(assetType, sym.symbol);
-      return next;
-    });
-  }, [symbols.map((s) => s.symbol).join(","), assetType]);
-
-  // 初始化运行时状态，从 localStorage 恢复数据
-  useEffect(() => {
-    const initialRuntimes: Record<string, SymbolRuntime> = {};
-    for (const sym of symbols) {
-      const persistedRt = loadRuntime(assetType, sym.symbol);
-      initialRuntimes[sym.symbol] = {
-        ma1Val: persistedRt.ma1Val,
-        ma2Val: persistedRt.ma2Val,
-        ma3Val: persistedRt.ma3Val,
-        condResults: persistedRt.condResults,
-        isGolden: persistedRt.isGolden,
-        inSignal: persistedRt.inSignal,
-        lastCheck: null,
-        error: null,
-        loading: false,
-        prevMa1GtMa2: persistedRt.prevMa1GtMa2,
-        hasSentSignal: persistedRt.hasSentSignal,
-        trendStatus: persistedRt.trendStatus,
-      };
-    }
-    setRuntimes(initialRuntimes);
-  }, [symbols.map((s) => s.symbol).join(","), assetType]);
-  
-  // 当配置、K线数据或价格准备好后，重新计算状态
-  useEffect(() => {
-    for (const sym of symbols) {
-      const cfg = configs[sym.symbol];
-      const cached = closesCache.current[sym.symbol];
-      
-      if (cfg && cached && cached.closes.length > 0 && sym.currentPrice != null) {
-        updateRuntimeFromCloses(sym, cfg);
-      }
-    }
-  }, [
-    symbols.map((s) => `${s.symbol}:${s.currentPrice}`).join(","),
-    Object.entries(configs)
-      .map(([k, v]) => `${k}:${v.enabled}:${v.interval}:${v.maType}`)
-      .sort()
-      .join("|"),
-    updateRuntimeFromCloses,
-  ]);
 
   const updateRuntimeFromCloses = useCallback(
     (sym: MonitoredSymbol, cfg: SymbolConfig) => {
@@ -784,6 +795,33 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
     stopRefreshTimer,
   ]);
 
+  // 刷新页面后，确保已启用的监控能自动获取数据
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      for (const sym of symbols) {
+        const cfg = configs[sym.symbol];
+        if (cfg?.enabled && sym.currentPrice != null) {
+          const cached = closesCache.current[sym.symbol];
+          if (!cached) {
+            fetchAndActivate(sym, cfg);
+          } else {
+            // 如果有缓存数据，直接更新运行时状态
+            updateRuntimeFromCloses(sym, cfg);
+          }
+        }
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [
+    symbols.map((s) => `${s.symbol}:${s.currentPrice}`).join(","),
+    Object.entries(configs)
+      .map(([k, v]) => `${k}:${v.enabled}`)
+      .sort()
+      .join("|"),
+    fetchAndActivate,
+    updateRuntimeFromCloses,
+  ]);
+
   const priceKey = symbols.map((s) => `${s.symbol}:${s.currentPrice ?? "x"}`).join(",");
   const prevPriceKey = useRef("");
   useEffect(() => {
@@ -852,11 +890,29 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
   const activeSymbols = symbols.filter((s) => s.currentPrice != null);
 
   return (
-    <div className="rounded-2xl glass-card border-0 p-6 space-y-5">
-      <div className="space-y-3 p-5 rounded-2xl glass-card border-0">
-        <div className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-          <span>🤖</span>
-          钉钉机器人配置
+    <div className="rounded-2xl glass-card border-0 p-6 space-y-8">
+      <div className="space-y-3 p-5 rounded-2xl glass-card border-0 mb-8">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="text-sm font-bold text-foreground flex items-center gap-2">
+            <span>🤖</span>
+            钉钉机器人配置
+          </div>
+          <div className="flex items-center gap-3">
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={handleTestSend} 
+              disabled={testStatus === "sending"}
+              className="border-2 border-teal-500/60 text-teal-600 hover:bg-teal-500/10"
+            >
+              {testStatus === "sending" ? "发送中..." : "📡 测试钉钉"}
+            </Button>
+            {testStatus !== "idle" && (
+              <span className={`text-xs font-medium ${testStatus === "ok" ? "text-green-600" : "text-red-500"}`}>
+                {testMsg}
+              </span>
+            )}
+          </div>
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs font-medium">Webhook 地址</Label>
@@ -864,34 +920,20 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
             value={dingtalkWebhook}
             onChange={(e) => setDingtalkWebhook(e.target.value)}
             placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."
-            className="text-xs font-mono bg-white/10 dark:bg-black/10 border-2 border-cyan-500/50 dark:border-cyan-400/50 shadow-[0_0_10px_rgba(0,255,255,0.2)]"
+            className="text-xs font-mono bg-white/5 dark:bg-black/5 border-2 border-teal-500/40 dark:border-teal-400/40"
           />
         </div>
       </div>
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <div className="text-lg font-bold text-slate-800 dark:text-slate-200">信号监控</div>
+          <div className="text-lg font-bold text-foreground">信号监控</div>
           <div className="text-xs text-muted-foreground mt-0.5">
             每个标的独立配置，指标实时更新，配置刷新后自动恢复
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Button 
-            size="sm" 
-            variant="outline" 
-            onClick={handleTestSend} 
-            disabled={testStatus === "sending"}
-            className="border-2 border-purple-500/70 text-purple-600 dark:text-purple-400 hover:bg-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.3)]"
-          >
-            {testStatus === "sending" ? "发送中..." : "📡 测试钉钉"}
-          </Button>
-          {testStatus !== "idle" && (
-            <span className={`text-xs font-medium ${testStatus === "ok" ? "text-green-600" : "text-red-500"}`}>
-              {testMsg}
-            </span>
-          )}
-        </div>
       </div>
+
+      <div className="mt-6" />
 
       {activeSymbols.length === 0 ? (
         <div className="text-sm text-muted-foreground py-2">暂无追踪标的，请先在上方添加代码</div>
@@ -907,12 +949,12 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
                 key={sym.symbol}
                 className={`rounded-2xl border-0 p-4 space-y-3 transition-all duration-300 glass-card price-card-hover ${
                   cfg.enabled && rt?.isGolden
-                    ? "ring-2 ring-yellow-400/50"
+                    ? "ring-2 ring-teal-400/50"
                     : ""
                 }`}
               >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
                     <div className="min-w-0">
                       <div className="font-semibold text-sm truncate">{sym.displayName}</div>
                       <div className="text-xs text-muted-foreground">{sym.symbol}</div>
@@ -923,7 +965,7 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
                     />
                   </div>
                   {cfg.enabled && (
-                    <div className="flex flex-wrap items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5 mb-3">
                       {rt?.loading && (
                         <span className="text-xs text-muted-foreground animate-pulse">加载</span>
                       )}
@@ -941,7 +983,7 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
                         </Badge>
                       )}
                       {!rt?.loading && rt?.isGolden && (
-                        <Badge className="bg-yellow-500 text-white text-[10px] px-1.5 py-0.5">✨ 已触发过信号</Badge>
+                        <Badge className="bg-teal-500 text-white text-[10px] px-1.5 py-0.5">✨ 已触发过信号</Badge>
                       )}
                       {!rt?.loading && rt?.hasSentSignal && !rt?.isGolden && (
                         <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">已触发过信号</Badge>
@@ -956,7 +998,7 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
                 {cfg.enabled && rt && !rt.error && (
                   <div className="space-y-1 text-xs">
                     <Separator />
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-0.5">
                       <span className="text-muted-foreground">当前价</span>
                       <span className="font-mono">{fmtVal(sym.currentPrice, true, isCNY)}</span>
                       <span className="text-muted-foreground">{cfg.maType}{cfg.ma1Period}</span>
@@ -1050,7 +1092,7 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
                           <NumInput
                             value={cfg.ma1Period}
                             onChange={(v) => updateConfig(sym.symbol, { ma1Period: v })}
-                            className="h-8 text-xs"
+                            className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs focus:outline-none"
                           />
                         </div>
                         <div className="space-y-1">
@@ -1058,7 +1100,7 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
                           <NumInput
                             value={cfg.ma2Period}
                             onChange={(v) => updateConfig(sym.symbol, { ma2Period: v })}
-                            className="h-8 text-xs"
+                            className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs focus:outline-none"
                           />
                         </div>
                         <div className="space-y-1">
@@ -1066,32 +1108,34 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
                           <NumInput
                             value={cfg.ma3Period}
                             onChange={(v) => updateConfig(sym.symbol, { ma3Period: v })}
-                            className="h-8 text-xs"
+                            className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs focus:outline-none"
                           />
                         </div>
                       </div>
 
-                      <div className="space-y-2">
+                      <div className="mt-8">
                         <Label className="text-xs">触发条件（全部满足才触发）</Label>
-                        <div className="space-y-1.5">
+                        <div style={{ height: '12px' }}></div>
+                        <div>
                           {cfg.conditions.map((c, i) => (
-                            <ConditionEditor
-                              key={c.id}
-                              cond={c}
-                              onChange={(updated) => {
-                                const newConds = cfg.conditions.map((x, j) => j === i ? updated : x);
-                                updateConfig(sym.symbol, { conditions: newConds });
-                              }}
-                              onRemove={() => {
-                                const newConds = cfg.conditions.filter((_, j) => j !== i);
-                                updateConfig(sym.symbol, { conditions: newConds });
-                              }}
-                              canRemove={cfg.conditions.length > 1}
-                            />
+                            <div key={c.id} className={i < cfg.conditions.length - 1 ? 'mb-6' : ''}>
+                              <ConditionEditor
+                                cond={c}
+                                onChange={(updated) => {
+                                  const newConds = cfg.conditions.map((x, j) => j === i ? updated : x);
+                                  updateConfig(sym.symbol, { conditions: newConds });
+                                }}
+                                onRemove={() => {
+                                  const newConds = cfg.conditions.filter((_, j) => j !== i);
+                                  updateConfig(sym.symbol, { conditions: newConds });
+                                }}
+                                canRemove={cfg.conditions.length > 1}
+                              />
+                            </div>
                           ))}
                         </div>
                         <button
-                          className="flex items-center gap-1 text-xs text-primary hover:opacity-75 transition-opacity"
+                          className="flex items-center gap-1 text-xs text-primary hover:opacity-75 transition-opacity mt-6"
                           onClick={() => {
                             const newCond: Condition = {
                               id: Date.now().toString(),
