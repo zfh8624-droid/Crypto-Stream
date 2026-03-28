@@ -163,6 +163,13 @@ interface PersistedRuntime {
 }
 
 function loadConfig(assetType: AssetType, symbol: string, isGuest: boolean = false, userId?: string): SymbolConfig {
+  // 登录用户不从 localStorage 读取
+  if (!isGuest) {
+    console.log(`[loadConfig] User mode, returning default for ${assetType} ${symbol}`);
+    return getDefaultConfig(assetType);
+  }
+  
+  // 访客模式从 localStorage 读取
   try {
     const key = storageKey(assetType, symbol, isGuest, userId);
     const raw = localStorage.getItem(key);
@@ -188,6 +195,13 @@ function loadConfig(assetType: AssetType, symbol: string, isGuest: boolean = fal
 }
 
 function saveConfig(assetType: AssetType, symbol: string, cfg: SymbolConfig, isGuest: boolean = false, userId?: string) {
+  // 登录用户不保存到 localStorage
+  if (!isGuest) {
+    console.log(`[saveConfig] User mode, skipping localStorage save for ${assetType} ${symbol}`);
+    return;
+  }
+  
+  // 访客模式保存到 localStorage
   try {
     const key = storageKey(assetType, symbol, isGuest, userId);
     console.log(`[saveConfig] Saving ${key}:`, cfg);
@@ -529,43 +543,7 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
     }
   }, [loadBackendMonitors, isGuest]);
 
-  // 将后端监控符号同步到 localStorage
-  useEffect(() => {
-    if (isGuest || loadingMonitors) return;
-    
-    try {
-      // 确定当前资产类型对应的 localStorage key
-      const localStorageKey = assetType === 'ashare' ? 'ashare_symbols' : 'crypto_symbols';
-      
-      // 获取当前 localStorage 中的符号
-      let currentSymbols: string[] = [];
-      const stored = localStorage.getItem(localStorageKey);
-      if (stored) {
-        try {
-          currentSymbols = JSON.parse(stored);
-        } catch {
-          // 如果解析失败，使用空数组
-          currentSymbols = [];
-        }
-      }
-      
-      // 获取后端监控中的所有符号
-      const backendSymbols = Object.values(backendMonitors).map(m => m.symbol);
-      
-      // 合并并去重
-      const allSymbolsSet = new Set([...currentSymbols, ...backendSymbols]);
-      const allSymbols = Array.from(allSymbolsSet);
-      
-      // 如果有变化，更新 localStorage
-      if (allSymbols.length !== currentSymbols.length || 
-          !allSymbols.every((s, i) => s === currentSymbols[i])) {
-        localStorage.setItem(localStorageKey, JSON.stringify(allSymbols));
-        console.log(`[GoldenCrossMonitor] Updated ${localStorageKey}:`, allSymbols);
-      }
-    } catch (err) {
-      console.error('[GoldenCrossMonitor] Error syncing to localStorage:', err);
-    }
-  }, [assetType, backendMonitors, isGuest, loadingMonitors]);
+  // 移除：登录用户不使用 localStorage
 
   const [configs, setConfigs] = useState<Record<string, SymbolConfig>>(() => {
     // 初始化时，访客模式用localStorage，用户模式先留空等后端数据
@@ -674,15 +652,13 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
         conditions: monitor.conditions,
         signalType: monitor.signalType,
       };
-      // 同时同步到localStorage
-      saveConfig(assetType, symbol, initial[symbol], false, userId);
     }
     
-    // 再处理当前有实时价格的符号
+    // 再处理当前有实时价格的符号（用户模式下用默认配置，不从localStorage读）
     for (const sym of symbols) {
       if (!initial[sym.symbol]) {
-        console.log('[config effect] Using localStorage for', sym.symbol);
-        initial[sym.symbol] = loadConfig(assetType, sym.symbol, isGuest, userId);
+        console.log('[config effect] Using default config for', sym.symbol);
+        initial[sym.symbol] = getDefaultConfig(assetType);
       }
     }
     
@@ -696,7 +672,7 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
       const updated = { ...prev };
       for (const sym of displaySymbols) {
         if (!updated[sym.symbol]) {
-          updated[sym.symbol] = loadConfig(assetType, sym.symbol, isGuest, userId);
+          updated[sym.symbol] = isGuest ? loadConfig(assetType, sym.symbol, isGuest, userId) : getDefaultConfig(assetType);
         }
       }
       return updated;
@@ -728,8 +704,8 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
   }, [displaySymbols.map((s) => s.symbol).join(","), assetType, isGuest, userId]);
 
   const getConfig = useCallback(
-    (symbol: string): SymbolConfig => configs[symbol] ?? loadConfig(assetType, symbol),
-    [configs, assetType]
+    (symbol: string): SymbolConfig => configs[symbol] ?? (isGuest ? loadConfig(assetType, symbol, isGuest, userId) : getDefaultConfig(assetType)),
+    [configs, assetType, isGuest, userId]
   );
 
   const updateRuntimeFromCloses = useCallback(
@@ -1034,10 +1010,15 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
   const updateConfig = useCallback(
     (symbol: string, patch: Partial<SymbolConfig>) => {
       console.log(`[updateConfig] Called for ${symbol}, patch:`, patch);
+      
       setConfigs((prev) => {
-        const current = prev[symbol] ?? loadConfig(assetType, symbol);
+        const current = prev[symbol] ?? (isGuest ? loadConfig(assetType, symbol, isGuest, userId) : getDefaultConfig(assetType));
         const updated = { ...current, ...patch };
-        saveConfig(assetType, symbol, updated);
+        
+        // 访客模式保存到 localStorage
+        if (isGuest) {
+          saveConfig(assetType, symbol, updated, isGuest, userId);
+        }
 
         if (patch.interval && patch.interval !== current.interval) {
           delete closesCache.current[symbol];
@@ -1052,10 +1033,57 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
           if (cached && newMax > cached.maxPeriod) delete closesCache.current[symbol];
         }
 
+        // 用户模式下，只保存到后端
+        if (!isGuest && token) {
+          (async () => {
+            try {
+              // 找到这个 symbol 的 displayName
+              const monitoredSymbol = displaySymbols.find(s => s.symbol === symbol);
+              const displayName = monitoredSymbol?.displayName || symbol;
+              
+              const monitorData = {
+                symbol,
+                displayName,
+                assetType,
+                enabled: updated.enabled,
+                interval: updated.interval,
+                maType: updated.maType,
+                ma1Period: updated.ma1Period,
+                ma2Period: updated.ma2Period,
+                ma3Period: updated.ma3Period,
+                conditions: updated.conditions,
+                signalType: updated.signalType,
+                dingtalkWebhook: dingtalkWebhook,
+              };
+
+              console.log(`[updateConfig] Saving to backend:`, monitorData);
+              
+              const res = await fetch("/api/monitors", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${token}`,
+                },
+                body: JSON.stringify(monitorData),
+              });
+
+              if (res.ok) {
+                console.log(`[updateConfig] Saved to backend successfully`);
+                // 重新加载后端监控，更新本地状态
+                await loadBackendMonitors();
+              } else {
+                console.error(`[updateConfig] Failed to save to backend:`, res.status);
+              }
+            } catch (err) {
+              console.error(`[updateConfig] Error saving to backend:`, err);
+            }
+          })();
+        }
+
         return { ...prev, [symbol]: updated };
       });
     },
-    [assetType]
+    [assetType, isGuest, token, userId, displaySymbols, dingtalkWebhook, loadBackendMonitors]
   );
 
   const handleToggle = useCallback(
