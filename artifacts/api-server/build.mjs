@@ -30,8 +30,7 @@ async function buildAll() {
     external: [
       "*.node",
       "sharp",
-      "better-sqlite3",
-      "sqlite3",
+      "@libsql/client",
       "canvas",
       "bcrypt",
       "jsonwebtoken",

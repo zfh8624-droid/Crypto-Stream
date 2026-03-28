@@ -7,7 +7,7 @@ import { monitorScheduler } from "./monitor-scheduler";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcrypt";
-import Database from "better-sqlite3";
+import { createClient } from "@libsql/client";
 import path from "path";
 import fs from "fs";
 
@@ -46,9 +46,11 @@ async function initDatabase() {
       fs.mkdirSync(dataDir, { recursive: true });
     }
 
-    const sqlite = new Database(dbPath);
+    const client = createClient({
+      url: `file:${dbPath}`
+    });
 
-    sqlite.exec(`
+    await client.execute(`
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL UNIQUE,
@@ -56,7 +58,9 @@ async function initDatabase() {
         created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
         is_admin INTEGER NOT NULL DEFAULT 0
       );
-      
+    `);
+
+    await client.execute(`
       CREATE TABLE IF NOT EXISTS monitors (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
@@ -80,12 +84,12 @@ async function initDatabase() {
         created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
         updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
       );
-      
-      CREATE INDEX IF NOT EXISTS user_id_idx ON monitors(user_id);
-      CREATE INDEX IF NOT EXISTS symbol_idx ON monitors(symbol);
     `);
 
-    sqlite.close();
+    await client.execute(`CREATE INDEX IF NOT EXISTS user_id_idx ON monitors(user_id);`);
+    await client.execute(`CREATE INDEX IF NOT EXISTS symbol_idx ON monitors(symbol);`);
+
+    await client.close();
     logger.info("✅ 数据库表创建成功");
   } catch (error) {
     logger.error({ err: error }, "创建数据库表失败");
