@@ -17,7 +17,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Trash2 } from "lucide-react";
+import { Trash2, LogOut, User } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useLocation } from "wouter";
 
 const WS_PASSWORD = "zfh8624";
 // 默认使用后端代理模式
@@ -751,6 +753,8 @@ function ParticlesBackground({ activeTab }: { activeTab: string }) {
 }
 
 export default function Home() {
+  const { isGuest, user, logout } = useAuth();
+  const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState("ashare");
   const [deleteConfirm, setDeleteConfirm] = useState<{
     open: boolean;
@@ -779,6 +783,47 @@ export default function Home() {
     <div className="min-h-screen bg-background text-foreground relative overflow-hidden">
       <div className="gradient-bg absolute inset-0 opacity-100" />
       <div className="max-w-5xl mx-auto px-3 sm:px-4 py-6 sm:py-8 space-y-4 sm:space-y-6 relative z-10">
+        {/* 右上角用户信息栏 */}
+        <div className="flex justify-end mb-2">
+          <div className="flex items-center gap-3 bg-white/5 dark:bg-black/5 backdrop-blur-sm rounded-xl px-4 py-2 border border-white/10">
+            {isGuest ? (
+              <>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <User className="w-4 h-4" />
+                  <span>访客模式</span>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-xs h-7"
+                  onClick={() => setLocation("/welcome")}
+                >
+                  选择模式
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 text-sm">
+                  <User className="w-4 h-4 text-blue-500" />
+                  <span className="font-medium">{user?.username}</span>
+                  {user?.isAdmin && (
+                    <Badge variant="outline" className="text-xs px-1.5 py-0">管理员</Badge>
+                  )}
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-xs h-7"
+                  onClick={logout}
+                >
+                  <LogOut className="w-3.5 h-3.5 mr-1" />
+                  退出
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+        
         <div className="text-center float-animation">
           <h1 className="text-2xl sm:text-4xl font-bold tracking-tight gradient-title">
             🚀 盯盘系统
