@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import Welcome from "@/pages/Welcome";
+import UserManagement from "@/pages/UserManagement";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ function AppContent() {
       <Route path="/" component={Home} />
       <Route path="/login" component={Login} />
       <Route path="/welcome" component={Welcome} />
+      <Route path="/user-management" component={UserManagement} />
       <Route component={NotFound} />
     </Switch>
   );

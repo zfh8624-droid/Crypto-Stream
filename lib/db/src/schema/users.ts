@@ -8,6 +8,7 @@ export const usersTable = sqliteTable(
     passwordHash: text('password_hash').notNull(),
     createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
     isAdmin: integer('is_admin', { mode: 'boolean' }).notNull().default(false),
+    isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   },
   (table) => {
     return {

@@ -17,7 +17,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Trash2, LogOut, User } from "lucide-react";
+import { Trash2, LogOut, User, Shield } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation } from "wouter";
 
@@ -1009,6 +1009,17 @@ export default function Home() {
                     <Badge variant="outline" className="text-xs px-1.5 py-0">管理员</Badge>
                   )}
                 </div>
+                {user?.isAdmin && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-xs h-7"
+                    onClick={() => setLocation("/user-management")}
+                  >
+                    <Shield className="w-3.5 h-3.5 mr-1" />
+                    用户管理
+                  </Button>
+                )}
                 <Button 
                   variant="outline" 
                   size="sm" 
