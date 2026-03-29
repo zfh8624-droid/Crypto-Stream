@@ -344,14 +344,25 @@ function SymbolInput({
   const [input, setInput] = useState("");
 
   const handleAdd = () => {
-    const sym = uppercase ? input.trim().toUpperCase() : input.trim().toLowerCase();
-    if (sym && !symbols.includes(sym)) { onAdd(sym); setInput(""); }
+    const rawSymbols = input.split(",").map(s => s.trim()).filter(s => s.length > 0);
+    if (rawSymbols.length > 0) {
+      rawSymbols.forEach(rawSym => {
+        const sym = uppercase ? rawSym.toUpperCase() : rawSym.toLowerCase();
+        if (sym && !symbols.includes(sym)) {
+          onAdd(sym);
+        }
+      });
+      setInput("");
+    }
   };
 
   return (
     <div className="p-5 rounded-2xl glass-card border-0">
       <Label className="text-base font-bold text-foreground">{label}</Label>
-      <div className="mt-6 flex gap-2">
+      <div className="mt-2 text-xs text-muted-foreground">
+        支持单个或多个符号（用逗号分隔）
+      </div>
+      <div className="mt-4 flex gap-2">
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
