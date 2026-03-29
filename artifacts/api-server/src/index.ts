@@ -46,6 +46,15 @@ async function initDatabase() {
       fs.mkdirSync(dataDir, { recursive: true });
     }
 
+    // 检查数据库文件是否存在
+    const dbFileExists = fs.existsSync(dbPath);
+    
+    if (dbFileExists) {
+      logger.info("ℹ️  数据库文件已存在，跳过表初始化");
+      return;
+    }
+
+    logger.info("📁 数据库文件不存在，开始初始化表结构");
     const client = createClient({
       url: `file:${dbPath}`
     });
@@ -60,13 +69,6 @@ async function initDatabase() {
         is_active INTEGER NOT NULL DEFAULT 1
       );
     `);
-
-    // 添加 is_active 列（如果不存在）
-    try {
-      await client.execute(`ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;`);
-    } catch (error) {
-      // 忽略列已存在的错误
-    }
 
     await client.execute(`
       CREATE TABLE IF NOT EXISTS monitors (
