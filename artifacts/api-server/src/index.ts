@@ -39,26 +39,44 @@ setupBinanceWS(server);
 
 async function initDatabase() {
   try {
-    const dbPath = process.env.DATABASE_PATH || path.join(process.cwd(), "data", "crypto-stream.db");
+    // 优先使用环境变量指定的路径
+    let dbPath: string;
+    if (process.env.DATABASE_PATH) {
+      dbPath = process.env.DATABASE_PATH;
+    } 
+    // 对于容器化部署，使用 /data 目录（通常会被挂载为持久卷）
+    else if (fs.existsSync("/data")) {
+      dbPath = path.join("/data", "crypto-stream.db");
+    }
+    // 对于本地部署，使用用户主目录
+    else {
+      const homeDir = process.env.HOME || process.env.USERPROFILE;
+      if (homeDir) {
+        const appDataDir = path.join(homeDir, ".crypto-stream");
+        if (!fs.existsSync(appDataDir)) {
+          fs.mkdirSync(appDataDir, { recursive: true });
+        }
+        dbPath = path.join(appDataDir, "crypto-stream.db");
+      }
+      // 最后使用当前工作目录作为 fallback
+      else {
+        dbPath = path.join(process.cwd(), "data", "crypto-stream.db");
+      }
+    }
+    
     const dataDir = path.dirname(dbPath);
-
+    
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
-
-    // 检查数据库文件是否存在
-    const dbFileExists = fs.existsSync(dbPath);
     
-    if (dbFileExists) {
-      logger.info("ℹ️  数据库文件已存在，跳过表初始化");
-      return;
-    }
-
-    logger.info("📁 数据库文件不存在，开始初始化表结构");
+    logger.info(`📁 使用数据库路径: ${dbPath}`);
+    
     const client = createClient({
       url: `file:${dbPath}`
     });
-
+    
+    // 确保表结构存在
     await client.execute(`
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,7 +87,7 @@ async function initDatabase() {
         is_active INTEGER NOT NULL DEFAULT 1
       );
     `);
-
+    
     await client.execute(`
       CREATE TABLE IF NOT EXISTS monitors (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,14 +113,14 @@ async function initDatabase() {
         updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
       );
     `);
-
+    
     await client.execute(`CREATE INDEX IF NOT EXISTS user_id_idx ON monitors(user_id);`);
     await client.execute(`CREATE INDEX IF NOT EXISTS symbol_idx ON monitors(symbol);`);
-
+    
     await client.close();
-    logger.info("✅ 数据库表创建成功");
+    logger.info("✅ 数据库表结构检查完成");
   } catch (error) {
-    logger.error({ err: error }, "创建数据库表失败");
+    logger.error({ err: error }, "数据库表结构检查失败");
   }
 }
 
