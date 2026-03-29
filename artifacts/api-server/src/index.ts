@@ -46,20 +46,28 @@ async function initDatabase() {
     if (process.env.DATABASE_PATH) {
       dbPath = process.env.DATABASE_PATH;
     } 
-    // 2. 线上环境：使用 a 文件夹（不会被清理）
+    // 2. 部署环境：使用 a 文件夹（不会被清理）
+    else if (fs.existsSync("/home/runner/workspace")) {
+      // 部署环境的工作目录
+      const aDir = path.join("/home/runner/workspace", "a");
+      if (!fs.existsSync(aDir)) {
+        fs.mkdirSync(aDir, { recursive: true });
+      }
+      dbPath = path.join(aDir, "crypto-stream.db");
+    }
+    // 3. 线上环境：使用 a 文件夹
     else if (fs.existsSync("/app")) {
-      // 假设线上环境的应用根目录是 /app
       const aDir = path.join("/app", "a");
       if (!fs.existsSync(aDir)) {
         fs.mkdirSync(aDir, { recursive: true });
       }
       dbPath = path.join(aDir, "crypto-stream.db");
     }
-    // 3. 容器化部署：使用 /data 目录
+    // 4. 容器化部署：使用 /data 目录
     else if (fs.existsSync("/data")) {
       dbPath = path.join("/data", "crypto-stream.db");
     }
-    // 4. 本地部署：使用用户主目录
+    // 5. 本地部署：使用用户主目录
     else {
       const homeDir = process.env.HOME || process.env.USERPROFILE;
       if (homeDir) {
@@ -69,7 +77,7 @@ async function initDatabase() {
         }
         dbPath = path.join(appDataDir, "crypto-stream.db");
       }
-      // 5. 最后使用当前工作目录作为 fallback
+      // 6. 最后使用当前工作目录作为 fallback
       else {
         dbPath = path.join(process.cwd(), "data", "crypto-stream.db");
       }
@@ -82,6 +90,9 @@ async function initDatabase() {
     }
     
     logger.info(`📁 使用数据库路径: ${dbPath}`);
+    
+    // 确保环境变量设置正确，这样 @workspace/db 也会使用相同的路径
+    process.env.DATABASE_PATH = dbPath;
     
     const client = createClient({
       url: `file:${dbPath}`
