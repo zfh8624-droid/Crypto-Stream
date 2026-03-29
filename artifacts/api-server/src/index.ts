@@ -41,14 +41,25 @@ async function initDatabase() {
   try {
     // 优先使用环境变量指定的路径
     let dbPath: string;
+    
+    // 1. 环境变量优先
     if (process.env.DATABASE_PATH) {
       dbPath = process.env.DATABASE_PATH;
     } 
-    // 对于容器化部署，使用 /data 目录（通常会被挂载为持久卷）
+    // 2. 线上环境：使用 a 文件夹（不会被清理）
+    else if (fs.existsSync("/app")) {
+      // 假设线上环境的应用根目录是 /app
+      const aDir = path.join("/app", "a");
+      if (!fs.existsSync(aDir)) {
+        fs.mkdirSync(aDir, { recursive: true });
+      }
+      dbPath = path.join(aDir, "crypto-stream.db");
+    }
+    // 3. 容器化部署：使用 /data 目录
     else if (fs.existsSync("/data")) {
       dbPath = path.join("/data", "crypto-stream.db");
     }
-    // 对于本地部署，使用用户主目录
+    // 4. 本地部署：使用用户主目录
     else {
       const homeDir = process.env.HOME || process.env.USERPROFILE;
       if (homeDir) {
@@ -58,7 +69,7 @@ async function initDatabase() {
         }
         dbPath = path.join(appDataDir, "crypto-stream.db");
       }
-      // 最后使用当前工作目录作为 fallback
+      // 5. 最后使用当前工作目录作为 fallback
       else {
         dbPath = path.join(process.cwd(), "data", "crypto-stream.db");
       }
