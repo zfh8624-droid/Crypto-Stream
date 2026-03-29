@@ -1138,12 +1138,45 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs font-medium">Webhook 地址</Label>
-          <Input
-            value={dingtalkWebhook}
-            onChange={(e) => setDingtalkWebhook(e.target.value)}
-            placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."
-            className="text-xs font-mono bg-white/5 dark:bg-black/5 border-2 border-teal-500/40 dark:border-teal-400/40"
-          />
+          <div className="flex gap-2">
+            <Input
+              value={dingtalkWebhook}
+              onChange={(e) => setDingtalkWebhook(e.target.value)}
+              placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."
+              className="flex-1 text-xs font-mono bg-white/5 dark:bg-black/5 border-2 border-teal-500/40 dark:border-teal-400/40"
+            />
+            {!isGuest && token && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const response = await fetch('/api/monitors/batch/update-webhook', {
+                      method: 'PUT',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                      },
+                      body: JSON.stringify({ webhookUrl: dingtalkWebhook }),
+                    });
+                    
+                    if (response.ok) {
+                      const data = await response.json();
+                      alert(`成功更新 ${data.updatedCount} 个监控的钉钉地址`);
+                    } else {
+                      const error = await response.json();
+                      alert(`更新失败: ${error.error}`);
+                    }
+                  } catch (error) {
+                    alert('更新失败，请检查网络连接');
+                  }
+                }}
+                className="border-2 border-teal-500/60 text-teal-600 hover:bg-teal-500/10"
+              >
+                确认修改
+              </Button>
+            )}
+          </div>
         </div>
       </div>
       <div className="flex items-center justify-between flex-wrap gap-2">

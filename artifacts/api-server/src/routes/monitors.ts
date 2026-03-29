@@ -167,4 +167,36 @@ router.delete("/monitors/:id", async (req: Request, res: Response) => {
   }
 });
 
+// 批量更新用户所有监控的钉钉地址
+router.put("/monitors/batch/update-webhook", async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.sendStatus(401);
+    }
+
+    const userId = parseInt(req.user.id);
+    const { webhookUrl } = req.body;
+
+    if (!webhookUrl) {
+      return res.status(400).json({ error: "缺少 webhookUrl 参数" });
+    }
+
+    // 批量更新用户的所有监控记录
+    const result = await db
+      .update(monitorsTable)
+      .set({
+        dingtalkWebhook: webhookUrl,
+        updatedAt: new Date(),
+      })
+      .where(eq(monitorsTable.userId, userId));
+
+    // 获取实际更新的记录数
+    const updatedCount = result?.changes || 0;
+    res.json({ success: true, updatedCount });
+  } catch (error) {
+    console.error("Batch update webhook error:", error);
+    res.status(500).json({ error: "批量更新钉钉地址失败" });
+  }
+});
+
 export default router;

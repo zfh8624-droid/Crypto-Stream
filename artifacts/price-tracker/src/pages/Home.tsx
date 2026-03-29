@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useCallback, useEffect } from "react";
+import React, { useState, useRef, useMemo, useCallback, useEffect } from "react";
 import { useBinanceTracker, useFinnhubTracker, PriceEntry } from "@/hooks/usePriceTracker";
 import { useAShareTracker, AShareQuote } from "@/hooks/useAShareWS";
 import { WSStatus } from "@/hooks/useWebSocket";
@@ -462,7 +462,19 @@ function WSConfigPanel({
   );
 }
 
-function CryptoTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => void) => void }) {
+function CryptoTab({ 
+  onDelete, 
+  isGuest, 
+  monitors, 
+  addMonitor, 
+  deleteMonitor 
+}: { 
+  onDelete?: (symbol: string, onConfirm: () => void) => void; 
+  isGuest: boolean; 
+  monitors: any[]; 
+  addMonitor: (symbol: string, assetType: 'crypto' | 'ashare' | 'stock') => Promise<void>; 
+  deleteMonitor: (symbol: string) => Promise<void>; 
+}) {
   // 默认使用后端代理模式
   const defaultWsUrl = useMemo(() => {
     return `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/binance`;
@@ -488,43 +500,60 @@ function CryptoTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => 
     }
   }, [wsUrl]);
   
-  const [symbols, setSymbols] = usePersistedState("crypto_symbols", DEFAULT_CRYPTO_SYMBOLS);
+  // 对于访客用户，使用本地存储
+  const [guestSymbols, setGuestSymbols] = usePersistedState("crypto_symbols", DEFAULT_CRYPTO_SYMBOLS);
+  
+  // 对于登录用户，从监控表获取符号列表
+  const cryptoMonitors = monitors.filter(m => m.assetType === 'crypto');
+  const symbols = isGuest 
+    ? guestSymbols
+    : cryptoMonitors.map(m => m.symbol);
+  
+  // 对于登录用户，使用 set 来避免重复
+  const uniqueSymbols = [...new Set(symbols)];
 
   const config = useMemo(
-    () => ({ type: "crypto" as const, wsUrl, symbols }),
-    [wsUrl, symbols.join(",")]
+    () => ({ type: "crypto" as const, wsUrl, symbols: uniqueSymbols }),
+    [wsUrl, uniqueSymbols.join(",")]
   );
   const { prices, status, subscribe, unsubscribe } = useBinanceTracker(config);
 
-  const addSymbol = useCallback((s: string) => {
-    setSymbols((prev) => {
-      if (prev.includes(s)) return prev;
-      const newSymbols = [...prev, s];
-      subscribe([s]);
-      return newSymbols;
-    });
-  }, [subscribe]);
-  const removeSymbol = useCallback((s: string) => {
-    setSymbols((prev) => {
+  const addSymbol = useCallback(async (s: string) => {
+    if (isGuest) {
+      if (!guestSymbols.includes(s)) {
+        const newSymbols = [...guestSymbols, s];
+        setGuestSymbols(newSymbols);
+        subscribe([s]);
+      }
+    } else {
+      await addMonitor(s, 'crypto');
+    }
+  }, [isGuest, guestSymbols, setGuestSymbols, subscribe, addMonitor]);
+  
+  const removeSymbol = useCallback(async (s: string) => {
+    if (isGuest) {
+      const newSymbols = guestSymbols.filter((x) => x !== s);
+      setGuestSymbols(newSymbols);
       unsubscribe([s]);
-      return prev.filter((x) => x !== s);
-    });
-  }, [unsubscribe]);
+    } else {
+      await deleteMonitor(s);
+    }
+  }, [isGuest, guestSymbols, setGuestSymbols, unsubscribe, deleteMonitor]);
 
   const entries = useMemo(
     () =>
-      symbols.map((sym) => prices[sym] ?? {
+      uniqueSymbols.map((sym) => prices[sym] ?? {
         symbol: sym, price: null, prevPrice: null, change24h: null,
         change24hPct: null, volume: null, lastUpdate: null, flash: null,
       }),
-    [prices, symbols.join(",")]
+    [prices, uniqueSymbols.join(",")]
   );
 
   const monitoredSymbols = useMemo<MonitoredSymbol[]>(
-    () => symbols.map((sym) => ({
+    () => uniqueSymbols.map((sym) => ({
       symbol: sym, displayName: sym, currentPrice: prices[sym]?.price ?? null,
     })),
-    [prices, symbols.join(",")]
+    [prices, uniqueSymbols.join(",")]
   );
 
   return (
@@ -561,31 +590,65 @@ function CryptoTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => 
   );
 }
 
-function StockTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => void) => void }) {
+function StockTab({ 
+  onDelete, 
+  isGuest, 
+  monitors, 
+  addMonitor, 
+  deleteMonitor 
+}: { 
+  onDelete?: (symbol: string, onConfirm: () => void) => void; 
+  isGuest: boolean; 
+  monitors: any[]; 
+  addMonitor: (symbol: string, assetType: 'crypto' | 'ashare' | 'stock') => Promise<void>; 
+  deleteMonitor: (symbol: string) => Promise<void>; 
+}) {
   const [wsUrl, setWsUrl] = useState(DEFAULT_FINNHUB_WS);
   const [token, setToken] = useState(DEFAULT_FINNHUB_TOKEN);
-  const [symbols, setSymbols] = usePersistedState("stock_symbols", DEFAULT_STOCK_SYMBOLS);
+  
+  // 对于访客用户，使用本地存储
+  const [guestSymbols, setGuestSymbols] = usePersistedState("stock_symbols", DEFAULT_STOCK_SYMBOLS);
+  
+  // 对于登录用户，从监控表获取符号列表
+  const stockMonitors = monitors.filter(m => m.assetType === 'stock');
+  const symbols = isGuest 
+    ? guestSymbols
+    : stockMonitors.map(m => m.symbol);
+  
+  // 对于登录用户，使用 set 来避免重复
+  const uniqueSymbols = [...new Set(symbols)];
 
   const config = useMemo(
-    () => ({ type: "stock" as const, wsUrl, token, symbols }),
-    [wsUrl, token, symbols.join(",")]
+    () => ({ type: "stock" as const, wsUrl, token, symbols: uniqueSymbols }),
+    [wsUrl, token, uniqueSymbols.join(",")]
   );
   const { prices, status } = useFinnhubTracker(config);
 
-  const addSymbol = useCallback((s: string) => {
-    setSymbols((prev) => (prev.includes(s) ? prev : [...prev, s]));
-  }, []);
-  const removeSymbol = useCallback((s: string) => {
-    setSymbols((prev) => prev.filter((x) => x !== s));
-  }, []);
+  const addSymbol = useCallback(async (s: string) => {
+    if (isGuest) {
+      if (!guestSymbols.includes(s)) {
+        setGuestSymbols([...guestSymbols, s]);
+      }
+    } else {
+      await addMonitor(s, 'stock');
+    }
+  }, [isGuest, guestSymbols, setGuestSymbols, addMonitor]);
+  
+  const removeSymbol = useCallback(async (s: string) => {
+    if (isGuest) {
+      setGuestSymbols(guestSymbols.filter((x) => x !== s));
+    } else {
+      await deleteMonitor(s);
+    }
+  }, [isGuest, guestSymbols, setGuestSymbols, deleteMonitor]);
 
   const entries = useMemo(
     () =>
-      symbols.map((sym) => prices[sym] ?? {
+      uniqueSymbols.map((sym) => prices[sym] ?? {
         symbol: sym, price: null, prevPrice: null, change24h: null,
         change24hPct: null, volume: null, lastUpdate: null, flash: null,
       }),
-    [prices, symbols.join(",")]
+    [prices, uniqueSymbols.join(",")]
   );
 
   return (
@@ -627,16 +690,50 @@ function StockTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => v
   );
 }
 
-function AShareTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => void) => void }) {
-  const [symbols, setSymbols] = usePersistedState("ashare_symbols", DEFAULT_ASHARE_SYMBOLS);
-  const { prices, status } = useAShareTracker(symbols);
+function AShareTab({ 
+  onDelete, 
+  isGuest, 
+  monitors, 
+  addMonitor, 
+  deleteMonitor 
+}: { 
+  onDelete?: (symbol: string, onConfirm: () => void) => void; 
+  isGuest: boolean; 
+  monitors: any[]; 
+  addMonitor: (symbol: string, assetType: 'crypto' | 'ashare' | 'stock') => Promise<void>; 
+  deleteMonitor: (symbol: string) => Promise<void>; 
+}) {
+  // 对于访客用户，使用本地存储
+  const [guestSymbols, setGuestSymbols] = usePersistedState("ashare_symbols", DEFAULT_ASHARE_SYMBOLS);
+  
+  // 对于登录用户，从监控表获取符号列表
+  const ashareMonitors = monitors.filter(m => m.assetType === 'ashare');
+  const symbols = isGuest 
+    ? guestSymbols
+    : ashareMonitors.map(m => m.symbol);
+  
+  // 对于登录用户，使用 set 来避免重复
+  const uniqueSymbols = [...new Set(symbols)];
+  
+  const { prices, status } = useAShareTracker(uniqueSymbols);
 
-  const addSymbol = useCallback((s: string) => {
-    setSymbols((prev) => (prev.includes(s) ? prev : [...prev, s]));
-  }, []);
-  const removeSymbol = useCallback((s: string) => {
-    setSymbols((prev) => prev.filter((x) => x !== s));
-  }, []);
+  const addSymbol = useCallback(async (s: string) => {
+    if (isGuest) {
+      if (!guestSymbols.includes(s)) {
+        setGuestSymbols([...guestSymbols, s]);
+      }
+    } else {
+      await addMonitor(s, 'ashare');
+    }
+  }, [isGuest, guestSymbols, setGuestSymbols, addMonitor]);
+  
+  const removeSymbol = useCallback(async (s: string) => {
+    if (isGuest) {
+      setGuestSymbols(guestSymbols.filter((x) => x !== s));
+    } else {
+      await deleteMonitor(s);
+    }
+  }, [isGuest, guestSymbols, setGuestSymbols, deleteMonitor]);
 
   const wsUrl = useMemo(() => {
     return `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/ashare`;
@@ -644,12 +741,12 @@ function AShareTab({ onDelete }: { onDelete?: (symbol: string, onConfirm: () => 
 
   const monitoredSymbols = useMemo<MonitoredSymbol[]>(
     () =>
-      symbols.map((code) => ({
+      uniqueSymbols.map((code) => ({
         symbol: code,
         displayName: prices[code]?.name ?? code,
         currentPrice: prices[code]?.price ?? null,
       })),
-    [prices, symbols.join(",")]
+    [prices, uniqueSymbols.join(",")]
   );
 
   return (
@@ -764,7 +861,7 @@ function ParticlesBackground({ activeTab }: { activeTab: string }) {
 }
 
 export default function Home() {
-  const { isGuest, user, logout } = useAuth();
+  const { isGuest, user, token, logout } = useAuth();
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState("ashare");
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -772,6 +869,97 @@ export default function Home() {
     symbol: string;
     onConfirm: () => void;
   }>({ open: false, symbol: "", onConfirm: () => {} });
+  const [monitors, setMonitors] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // 获取用户的监控列表
+  const fetchMonitors = async () => {
+    if (isGuest || !token) return;
+    
+    setLoading(true);
+    try {
+      const response = await fetch('/api/monitors', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setMonitors(data);
+      }
+    } catch (error) {
+      console.error('获取监控列表失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 添加监控
+  const addMonitor = async (symbol: string, assetType: 'crypto' | 'ashare' | 'stock') => {
+    if (isGuest || !token) return;
+    
+    try {
+      const response = await fetch('/api/monitors', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          symbol,
+          displayName: symbol,
+          assetType,
+          enabled: false,
+          interval: '1d',
+          maType: 'SMA',
+          ma1Period: 5,
+          ma2Period: 10,
+          ma3Period: 20,
+          conditions: [{ id: 'c1', left: 'price', op: '>', right: 'ma3' }],
+          signalType: 'golden',
+          trendStatus: 'neutral',
+        }),
+      });
+      
+      if (response.ok) {
+        await fetchMonitors();
+      }
+    } catch (error) {
+      console.error('添加监控失败:', error);
+    }
+  };
+
+  // 删除监控
+  const deleteMonitor = async (symbol: string) => {
+    if (isGuest || !token) return;
+    
+    try {
+      const monitor = monitors.find(m => m.symbol === symbol);
+      if (monitor) {
+        const response = await fetch(`/api/monitors/${monitor.id}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        
+        if (response.ok) {
+          // 删除成功后刷新页面
+          window.location.reload();
+        }
+      }
+    } catch (error) {
+      console.error('删除监控失败:', error);
+    }
+  };
+
+  // 初始加载监控列表
+  React.useEffect(() => {
+    if (!isGuest && token) {
+      fetchMonitors();
+    }
+  }, [isGuest, token]);
 
   const handleDelete = (symbol: string, onDelete: () => void) => {
     setDeleteConfirm({
@@ -863,13 +1051,31 @@ export default function Home() {
             </SimpleTabsTrigger>
           </SimpleTabsList>
           <SimpleTabsContent value="ashare">
-            <AShareTab onDelete={handleDelete} />
+            <AShareTab 
+              onDelete={handleDelete} 
+              isGuest={isGuest}
+              monitors={monitors}
+              addMonitor={addMonitor}
+              deleteMonitor={deleteMonitor}
+            />
           </SimpleTabsContent>
           <SimpleTabsContent value="crypto">
-            <CryptoTab onDelete={handleDelete} />
+            <CryptoTab 
+              onDelete={handleDelete} 
+              isGuest={isGuest}
+              monitors={monitors}
+              addMonitor={addMonitor}
+              deleteMonitor={deleteMonitor}
+            />
           </SimpleTabsContent>
           <SimpleTabsContent value="stock">
-            <StockTab onDelete={handleDelete} />
+            <StockTab 
+              onDelete={handleDelete} 
+              isGuest={isGuest}
+              monitors={monitors}
+              addMonitor={addMonitor}
+              deleteMonitor={deleteMonitor}
+            />
           </SimpleTabsContent>
         </SimpleTabs>
       </div>
