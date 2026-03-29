@@ -37,64 +37,65 @@ const server = createServer(app);
 setupAShareWS(server);
 setupBinanceWS(server);
 
-async function initDatabase() {
-  try {
-    const dbPath = process.env.DATABASE_PATH || path.join(process.cwd(), "data", "crypto-stream.db");
-    const dataDir = path.dirname(dbPath);
+// 数据库文件已通过版本控制同步，不再需要初始化脚本
+// async function initDatabase() {
+//   try {
+//     const dbPath = process.env.DATABASE_PATH || path.join(process.cwd(), "data", "crypto-stream.db");
+//     const dataDir = path.dirname(dbPath);
 
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
+//     if (!fs.existsSync(dataDir)) {
+//       fs.mkdirSync(dataDir, { recursive: true });
+//     }
 
-    const client = createClient({
-      url: `file:${dbPath}`
-    });
+//     const client = createClient({
+//       url: `file:${dbPath}`
+//     });
 
-    await client.execute(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-        is_admin INTEGER NOT NULL DEFAULT 0
-      );
-    `);
+//     await client.execute(`
+//       CREATE TABLE IF NOT EXISTS users (
+//         id INTEGER PRIMARY KEY AUTOINCREMENT,
+//         username TEXT NOT NULL UNIQUE,
+//         password_hash TEXT NOT NULL,
+//         created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+//         is_admin INTEGER NOT NULL DEFAULT 0
+//       );
+//     `);
 
-    await client.execute(`
-      CREATE TABLE IF NOT EXISTS monitors (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        symbol TEXT NOT NULL,
-        display_name TEXT NOT NULL,
-        asset_type TEXT NOT NULL CHECK(asset_type IN ('crypto', 'ashare')),
-        enabled INTEGER NOT NULL DEFAULT 1,
-        interval TEXT NOT NULL,
-        ma_type TEXT NOT NULL CHECK(ma_type IN ('SMA', 'EMA', 'WMA')),
-        ma1_period INTEGER NOT NULL,
-        ma2_period INTEGER NOT NULL,
-        ma3_period INTEGER NOT NULL,
-        conditions TEXT NOT NULL,
-        signal_type TEXT NOT NULL CHECK(signal_type IN ('golden', 'death')),
-        dingtalk_webhook TEXT,
-        last_check_at INTEGER,
-        last_signal_at INTEGER,
-        has_sent_signal INTEGER NOT NULL DEFAULT 0,
-        prev_ma1_gt_ma2 INTEGER,
-        trend_status TEXT NOT NULL DEFAULT 'neutral' CHECK(trend_status IN ('bullish', 'bearish', 'neutral')),
-        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-        updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
-      );
-    `);
+//     await client.execute(`
+//       CREATE TABLE IF NOT EXISTS monitors (
+//         id INTEGER PRIMARY KEY AUTOINCREMENT,
+//         user_id INTEGER NOT NULL,
+//         symbol TEXT NOT NULL,
+//         display_name TEXT NOT NULL,
+//         asset_type TEXT NOT NULL CHECK(asset_type IN ('crypto', 'ashare')),
+//         enabled INTEGER NOT NULL DEFAULT 1,
+//         interval TEXT NOT NULL,
+//         ma_type TEXT NOT NULL CHECK(ma_type IN ('SMA', 'EMA', 'WMA')),
+//         ma1_period INTEGER NOT NULL,
+//         ma2_period INTEGER NOT NULL,
+//         ma3_period INTEGER NOT NULL,
+//         conditions TEXT NOT NULL,
+//         signal_type TEXT NOT NULL CHECK(signal_type IN ('golden', 'death')),
+//         dingtalk_webhook TEXT,
+//         last_check_at INTEGER,
+//         last_signal_at INTEGER,
+//         has_sent_signal INTEGER NOT NULL DEFAULT 0,
+//         prev_ma1_gt_ma2 INTEGER,
+//         trend_status TEXT NOT NULL DEFAULT 'neutral' CHECK(trend_status IN ('bullish', 'bearish', 'neutral')),
+//         created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+//         updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+//       );
+//     `);
 
-    await client.execute(`CREATE INDEX IF NOT EXISTS user_id_idx ON monitors(user_id);`);
-    await client.execute(`CREATE INDEX IF NOT EXISTS symbol_idx ON monitors(symbol);`);
+//     await client.execute(`CREATE INDEX IF NOT EXISTS user_id_idx ON monitors(user_id);`);
+//     await client.execute(`CREATE INDEX IF NOT EXISTS symbol_idx ON monitors(symbol);`);
 
-    await client.close();
-    logger.info("✅ 数据库表创建成功");
-  } catch (error) {
-    logger.error({ err: error }, "创建数据库表失败");
-  }
-}
+//     await client.close();
+//     logger.info("✅ 数据库表创建成功");
+//   } catch (error) {
+//     logger.error({ err: error }, "创建数据库表失败");
+//   }
+// }
 
 async function initAdminUser() {
   try {
@@ -128,7 +129,8 @@ server.listen(port, async (err?: Error) => {
     process.exit(1);
   }
 
-  await initDatabase();
+  // 数据库文件已通过版本控制同步，跳过初始化
+  // await initDatabase();
   await initAdminUser();
   logger.info({ port }, "Server listening");
   monitorScheduler.start();
