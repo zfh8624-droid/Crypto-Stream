@@ -29,7 +29,7 @@ router.post("/login", async (req: Request, res: Response) => {
       where: eq(usersTable.username, username),
     });
 
-    if (!user) {
+    if (!user || !user.isActive) {
       return res.status(401).json({ error: "用户名或密码错误" });
     }
 
@@ -75,8 +75,8 @@ router.get("/verify", authenticateToken, async (req: Request, res: Response) => 
       where: eq(usersTable.id, parseInt(req.user.id)),
     });
 
-    if (!user) {
-      return res.status(401).json({ error: "用户不存在" });
+    if (!user || !user.isActive) {
+      return res.status(401).json({ error: "用户不存在或已被禁用" });
     }
 
     res.json({

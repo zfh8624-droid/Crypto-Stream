@@ -56,9 +56,17 @@ async function initDatabase() {
         username TEXT NOT NULL UNIQUE,
         password_hash TEXT NOT NULL,
         created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-        is_admin INTEGER NOT NULL DEFAULT 0
+        is_admin INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1
       );
     `);
+
+    // 添加 is_active 列（如果不存在）
+    try {
+      await client.execute(`ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;`);
+    } catch (error) {
+      // 忽略列已存在的错误
+    }
 
     await client.execute(`
       CREATE TABLE IF NOT EXISTS monitors (
