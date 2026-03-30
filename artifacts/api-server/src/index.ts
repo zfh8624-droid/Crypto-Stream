@@ -6,19 +6,11 @@ import { setupBinanceWS } from "./binance-ws";
 import { monitorScheduler } from "./monitor-scheduler";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import bcrypt from "bcrypt";
 
 const isProduction = process.env.NODE_ENV === "production";
-let bcrypt;
 async function loadBcrypt() {
-  try {
-    if (isProduction) {
-      bcrypt = await import("bcrypt");
-    } else {
-      bcrypt = await import("bcryptjs");
-    }
-  } catch {
-    bcrypt = await import("bcryptjs");
-  }
+  // bcrypt is already imported directly
 }
 
 // 安全检查：验证JWT_SECRET
