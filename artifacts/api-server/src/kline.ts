@@ -48,25 +48,22 @@ export async function fetchBinanceKLines(
   }));
 }
 
-const SINA_SCALE_MAP: Record<string, number> = {
+const EASTMONEY_KLT_MAP: Record<string, number> = {
+  "1m": 1,
   "5m": 5,
   "15m": 15,
   "30m": 30,
   "1h": 60,
-  "1d": 1440,
-  "1w": 10080,
+  "1d": 101,
+  "1w": 102,
 };
 
-async function fetchTencentDailyKLines(symbol: string, limit: number): Promise<KLineCandle[]> {
-  // 使用腾讯财经日K线接口
-  // 格式转换: sh600000 -> sh600000, sz000001 -> sz000001
-  
-  // 先用东方财富的接口试试，更稳定
+async function fetchEastmoneyKLines(symbol: string, interval: string, limit: number): Promise<KLineCandle[]> {
   const code = symbol.replace(/^(sh|sz)/, "");
-  const market = symbol.startsWith("sh") ? "1" : "0"; // 1=上海, 0=深圳
+  const market = symbol.startsWith("sh") ? "1" : "0";
+  const klt = EASTMONEY_KLT_MAP[interval] ?? 101;
   
-  // 东方财富日K线接口
-  const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${market}.${code}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&beg=0&end=20500101&_=${Date.now()}`;
+  const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${market}.${code}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=${klt}&fqt=1&beg=0&end=20500101&_=${Date.now()}`;
   
   const res = await fetch(url, {
     headers: { 
@@ -75,22 +72,34 @@ async function fetchTencentDailyKLines(symbol: string, limit: number): Promise<K
     },
   });
   
-  if (!res.ok) throw new Error(`Eastmoney daily K-line error: ${res.status}`);
+  if (!res.ok) throw new Error(`Eastmoney K-line error: ${res.status}`);
   
   const text = await res.text();
   
   try {
     const json = JSON.parse(text);
     if (!json.data || !json.data.klines || !Array.isArray(json.data.klines)) {
-      throw new Error("东方财富日K线数据为空");
+      throw new Error(`东方财富${interval}K线数据为空`);
     }
     
     const klines = json.data.klines.slice(-Math.min(limit, 500));
     
     return klines.map((line: string) => {
-      // 东方财富格式: "日期,开盘,收盘,最高,最低,成交量,成交额,振幅,涨跌幅,涨跌额,换手率"
       const parts = line.split(",");
-      const date = new Date(parts[0].replace(/-/g, "/"));
+      let dateStr = parts[0];
+      
+      if (interval === "1d" || interval === "1w") {
+        dateStr = dateStr.replace(/-/g, "/");
+      } else {
+        const year = dateStr.substring(0, 4);
+        const month = dateStr.substring(4, 6);
+        const day = dateStr.substring(6, 8);
+        const hour = dateStr.substring(8, 10);
+        const minute = dateStr.substring(10, 12);
+        dateStr = `${year}/${month}/${day} ${hour}:${minute}`;
+      }
+      
+      const date = new Date(dateStr);
       
       return {
         time: date.getTime(),
@@ -102,7 +111,7 @@ async function fetchTencentDailyKLines(symbol: string, limit: number): Promise<K
       };
     });
   } catch (parseErr) {
-    throw new Error(`解析东方财富日K线数据失败: ${text.substring(0, 150)}`);
+    throw new Error(`解析东方财富${interval}K线数据失败: ${text.substring(0, 150)}`);
   }
 }
 
@@ -111,50 +120,5 @@ export async function fetchSinaKLines(
   interval: string,
   limit: number = 200
 ): Promise<KLineCandle[]> {
-  // 对于日K线，使用腾讯财经接口
-  if (interval === "1d") {
-    return await fetchTencentDailyKLines(symbol, limit);
-  }
-  
-  const scale = SINA_SCALE_MAP[interval] ?? 60;
-  const url = `http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=${symbol}&scale=${scale}&ma=no&datalen=${limit}`;
-  
-  const res = await fetch(url, {
-    headers: { Referer: "http://finance.sina.com.cn/", "User-Agent": "Mozilla/5.0" },
-  });
-  
-  if (!res.ok) throw new Error(`Sina K-line error: ${res.status}`);
-  
-  const buffer = await res.arrayBuffer();
-  const text = iconv.decode(Buffer.from(buffer), "gbk");
-  
-  if (!text || text.trim() === "" || text.trim() === "[]") {
-    throw new Error(`新浪${interval}K线数据为空，请尝试其他周期`);
-  }
-  
-  try {
-    const data = JSON.parse(text) as Array<{
-      day: string;
-      open: string;
-      high: string;
-      low: string;
-      close: string;
-      volume: string;
-    }>;
-    
-    if (!Array.isArray(data) || data.length === 0) {
-      throw new Error(`新浪${interval}K线数据格式错误`);
-    }
-    
-    return data.map((k) => ({
-      time: new Date(k.day).getTime(),
-      open: parseFloat(k.open),
-      high: parseFloat(k.high),
-      low: parseFloat(k.low),
-      close: parseFloat(k.close),
-      volume: parseFloat(k.volume),
-    }));
-  } catch (parseErr) {
-    throw new Error(`解析新浪${interval}K线数据失败: ${text.substring(0, 100)}`);
-  }
+  return await fetchEastmoneyKLines(symbol, interval, limit);
 }
