@@ -1,4 +1,9 @@
-import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
+import { pgTable, text, serial, integer, json, boolean, timestamp, pgEnum, index } from 'drizzle-orm/pg-core';
+
+export const assetTypeEnum = pgEnum('asset_type', ['crypto', 'ashare']);
+export const maTypeEnum = pgEnum('ma_type', ['SMA', 'EMA', 'WMA']);
+export const signalTypeEnum = pgEnum('signal_type', ['golden', 'death']);
+export const trendStatusEnum = pgEnum('trend_status', ['bullish', 'bearish', 'neutral']);
 
 export type AssetType = 'crypto' | 'ashare';
 export type MAType = 'SMA' | 'EMA' | 'WMA';
@@ -11,36 +16,35 @@ export interface Condition {
   right: 'price' | 'ma1' | 'ma2' | 'ma3';
 }
 
-export const monitorsTable = sqliteTable(
+export const monitorsTable = pgTable(
   'monitors',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: serial('id').primaryKey(),
     userId: integer('user_id').notNull(),
     symbol: text('symbol').notNull(),
     displayName: text('display_name').notNull(),
-    assetType: text('asset_type', { enum: ['crypto', 'ashare'] }).notNull(),
-    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    assetType: assetTypeEnum('asset_type').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
     interval: text('interval').notNull(),
-    maType: text('ma_type', { enum: ['SMA', 'EMA', 'WMA'] }).notNull(),
+    maType: maTypeEnum('ma_type').notNull(),
     ma1Period: integer('ma1_period').notNull(),
     ma2Period: integer('ma2_period').notNull(),
     ma3Period: integer('ma3_period').notNull(),
-    conditions: text('conditions', { mode: 'json' }).notNull(),
-    signalType: text('signal_type', { enum: ['golden', 'death'] }).notNull(),
+    conditions: json('conditions').notNull().$type<Condition[]>(),
+    signalType: signalTypeEnum('signal_type').notNull(),
     dingtalkWebhook: text('dingtalk_webhook'),
-    lastCheckAt: integer('last_check_at', { mode: 'timestamp' }),
-    lastSignalAt: integer('last_signal_at', { mode: 'timestamp' }),
-    hasSentSignal: integer('has_sent_signal', { mode: 'boolean' }).notNull().default(false),
-    prevMa1GtMa2: integer('prev_ma1_gt_ma2', { mode: 'boolean' }),
-    trendStatus: text('trend_status', { enum: ['bullish', 'bearish', 'neutral'] }).notNull().default('neutral'),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+    lastCheckAt: timestamp('last_check_at', { mode: 'date' }),
+    lastSignalAt: timestamp('last_signal_at', { mode: 'date' }),
+    hasSentSignal: boolean('has_sent_signal').notNull().default(false),
+    prevMa1GtMa2: boolean('prev_ma1_gt_ma2'),
+    trendStatus: trendStatusEnum('trend_status').notNull().default('neutral'),
+    createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
   },
   (table) => {
     return {
       userIdIdx: index('user_id_idx').on(table.userId),
       symbolIdx: index('symbol_idx').on(table.symbol),
-      // 复合索引用于优化查询
       userSymbolIdx: index('user_symbol_idx').on(table.userId, table.symbol),
     };
   }

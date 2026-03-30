@@ -6,14 +6,23 @@ import { setupBinanceWS } from "./binance-ws";
 import { monitorScheduler } from "./monitor-scheduler";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcrypt";
-import { createClient } from "@libsql/client";
-import path from "path";
-import fs from "fs";
+
+const isProduction = process.env.NODE_ENV === "production";
+let bcrypt;
+async function loadBcrypt() {
+  try {
+    if (isProduction) {
+      bcrypt = await import("bcrypt");
+    } else {
+      bcrypt = await import("bcryptjs");
+    }
+  } catch {
+    bcrypt = await import("bcryptjs");
+  }
+}
 
 // 安全检查：验证JWT_SECRET
 const JWT_SECRET = process.env.JWT_SECRET;
-const isProduction = process.env.NODE_ENV === "production";
 
 if (isProduction && (!JWT_SECRET || JWT_SECRET === "your-secret-key-change-in-production")) {
   logger.error("❌ 生产环境必须设置JWT_SECRET环境变量，且不能使用默认值！");
@@ -36,73 +45,6 @@ const server = createServer(app);
 
 setupAShareWS(server);
 setupBinanceWS(server);
-
-async function initDatabase() {
-  try {
-    const dbPath = process.env.DATABASE_PATH || path.join(process.cwd(), "data", "crypto-stream.db");
-    const dataDir = path.dirname(dbPath);
-
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-
-    const client = createClient({
-      url: `file:${dbPath}`
-    });
-
-    await client.execute(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-        is_admin INTEGER NOT NULL DEFAULT 0,
-        is_active INTEGER NOT NULL DEFAULT 1
-      );
-    `);
-
-    // 添加 is_active 列（如果不存在）
-    try {
-      await client.execute(`ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;`);
-    } catch (error) {
-      // 忽略列已存在的错误
-    }
-
-    await client.execute(`
-      CREATE TABLE IF NOT EXISTS monitors (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        symbol TEXT NOT NULL,
-        display_name TEXT NOT NULL,
-        asset_type TEXT NOT NULL CHECK(asset_type IN ('crypto', 'ashare', 'stock')),
-        enabled INTEGER NOT NULL DEFAULT 0,
-        interval TEXT NOT NULL,
-        ma_type TEXT NOT NULL CHECK(ma_type IN ('SMA', 'EMA', 'WMA')),
-        ma1_period INTEGER NOT NULL,
-        ma2_period INTEGER NOT NULL,
-        ma3_period INTEGER NOT NULL,
-        conditions TEXT NOT NULL,
-        signal_type TEXT NOT NULL CHECK(signal_type IN ('golden', 'death')),
-        dingtalk_webhook TEXT,
-        last_check_at INTEGER,
-        last_signal_at INTEGER,
-        has_sent_signal INTEGER NOT NULL DEFAULT 0,
-        prev_ma1_gt_ma2 INTEGER,
-        trend_status TEXT NOT NULL DEFAULT 'neutral' CHECK(trend_status IN ('bullish', 'bearish', 'neutral')),
-        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-        updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
-      );
-    `);
-
-    await client.execute(`CREATE INDEX IF NOT EXISTS user_id_idx ON monitors(user_id);`);
-    await client.execute(`CREATE INDEX IF NOT EXISTS symbol_idx ON monitors(symbol);`);
-
-    await client.close();
-    logger.info("✅ 数据库表创建成功");
-  } catch (error) {
-    logger.error({ err: error }, "创建数据库表失败");
-  }
-}
 
 async function initAdminUser() {
   try {
@@ -158,8 +100,10 @@ server.listen(port, async (err?: Error) => {
     process.exit(1);
   }
 
-  await initDatabase();
+  await loadBcrypt();
   await initAdminUser();
+  
+  logger.info("✅ 数据库连接成功");
   logger.info({ port }, "Server listening");
   monitorScheduler.start();
 });
