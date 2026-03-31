@@ -1,9 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { db, usersTable } from "@workspace/db";
 import { authenticateToken } from "../middlewares/auth.js";
+import { getBcrypt } from "../lib/bcrypt.js";
 
 // 使用与index.ts相同的逻辑
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
@@ -33,6 +33,7 @@ router.post("/login", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "用户名或密码错误" });
     }
 
+    const bcrypt = await getBcrypt();
     const passwordMatch = await bcrypt.compare(password, user.passwordHash);
 
     if (!passwordMatch) {

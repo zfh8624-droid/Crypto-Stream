@@ -6,11 +6,14 @@
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
-    "dev": "start powershell -NoExit -Command \"cd d:\\Crypto-Stream\\artifacts\\api-server ; npm run start\" ; start powershell -NoExit -Command \"cd d:\\Crypto-Stream\\artifacts\\price-tracker ; npm run dev\""
+    "dev:windows": "start powershell -NoExit -Command \"cd d:\\Crypto-Stream\\artifacts\\api-server ; npm run start\" ; start powershell -NoExit -Command \"cd d:\\Crypto-Stream\\artifacts\\price-tracker ; npm run dev\"",
+    "dev:mac": "concurrently \"cd artifacts/api-server && export NODE_ENV=development && pnpm run dev:tsx\" \"cd artifacts/price-tracker && pnpm run dev\"",
+    "dev": "pnpm run dev:mac"
   },
   "private": true,
   "devDependencies": {
     "typescript": "~5.9.2",
-    "prettier": "^3.8.1"
+    "prettier": "^3.8.1",
+    "concurrently": "^8.2.2"
   }
 }

@@ -6,12 +6,9 @@ import { setupBinanceWS } from "./binance-ws";
 import { monitorScheduler } from "./monitor-scheduler";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcrypt";
+import { loadBcrypt, getBcrypt } from "./lib/bcrypt.js";
 
 const isProduction = process.env.NODE_ENV === "production";
-async function loadBcrypt() {
-  // bcrypt is already imported directly
-}
 
 // 安全检查：验证JWT_SECRET
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -40,6 +37,8 @@ setupBinanceWS(server);
 
 async function initAdminUser() {
   try {
+    const bcrypt = await getBcrypt();
+    
     // 创建或检查 admin 用户
     const existingAdmin = await db.query.usersTable.findFirst({
       where: eq(usersTable.username, "admin"),
