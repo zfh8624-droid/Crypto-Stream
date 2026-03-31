@@ -4,6 +4,39 @@ import { eq } from "drizzle-orm";
 import { logger } from "./lib/logger.js";
 import { fetchBinanceKLines, fetchSinaKLines } from "./kline.js";
 
+// 判断A股是否在休市时间
+function isAShareMarketClosed(): boolean {
+  const now = new Date();
+  const beijingTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
+  
+  const day = beijingTime.getDay(); // 0=周日, 1-6=周一到周六
+  const hours = beijingTime.getHours();
+  const minutes = beijingTime.getMinutes();
+  
+  // 周六周日休市
+  if (day === 0 || day === 6) {
+    return true;
+  }
+  
+  const currentTime = hours * 60 + minutes;
+  
+  // 上午9:30-11:30交易
+  const morningStart = 9 * 60 + 30;
+  const morningEnd = 11 * 60 + 30;
+  
+  // 下午13:00-15:00交易
+  const afternoonStart = 13 * 60;
+  const afternoonEnd = 15 * 60;
+  
+  // 在交易时间内
+  const isTradingTime = 
+    (currentTime >= morningStart && currentTime <= morningEnd) ||
+    (currentTime >= afternoonStart && currentTime <= afternoonEnd);
+  
+  // 不在交易时间就是休市
+  return !isTradingTime;
+}
+
 // MA计算函数
 export type MAType = "SMA" | "EMA" | "WMA";
 
@@ -248,46 +281,51 @@ class MonitorScheduler {
       const isNewSignal = hasSignalCross && isGolden && !newHasSentSignal;
 
       if (isNewSignal && monitor.dingtalkWebhook) {
-        const signalLabel = monitor.signalType === "golden" ? "金叉" : "死叉";
-        const now = new Date();
-        const timeStr = now.toLocaleString("zh-CN", {
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hour12: false
-        });
+        // 如果是A股且在休市时间，不发送钉钉消息
+        if (monitor.assetType === "ashare" && isAShareMarketClosed()) {
+          logger.debug(`A股休市期间，跳过发送钉钉消息: ${monitor.symbol}`);
+        } else {
+          const signalLabel = monitor.signalType === "golden" ? "金叉" : "死叉";
+          const now = new Date();
+          const timeStr = now.toLocaleString("zh-CN", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false
+          });
 
-        const isCNY = monitor.assetType === "ashare";
-        const msg =
-          `🔔 ${signalLabel}信号！\n` +
-          `触发时间：${timeStr}\n` +
-          `标的：${monitor.displayName}（${monitor.symbol}）\n` +
-          `周期：${monitor.interval}  均线类型：${monitor.maType}\n` +
-          `当前价：${fmtVal(price, true, isCNY)}\n` +
-          `MA${monitor.ma1Period}（短）：${fmtVal(ma1, true, isCNY)}\n` +
-          `MA${monitor.ma2Period}（中）：${fmtVal(ma2, true, isCNY)}\n` +
-          `MA${monitor.ma3Period}（长）：${fmtVal(ma3, true, isCNY)}\n` +
-          conditions
-            .map((c) => {
-              const sideLabels: Record<string, string> = {
-                price: "当前价",
-                ma1: `MA${monitor.ma1Period}`,
-                ma2: `MA${monitor.ma2Period}`,
-                ma3: `MA${monitor.ma3Period}`,
-              };
-              return `${sideLabels[c.left]} ${c.op} ${sideLabels[c.right]}`;
-            })
-            .join("，");
+          const isCNY = monitor.assetType === "ashare";
+          const msg =
+            `🔔 ${signalLabel}信号！\n` +
+            `触发时间：${timeStr}\n` +
+            `标的：${monitor.displayName}（${monitor.symbol}）\n` +
+            `周期：${monitor.interval}  均线类型：${monitor.maType}\n` +
+            `当前价：${fmtVal(price, true, isCNY)}\n` +
+            `MA${monitor.ma1Period}（短）：${fmtVal(ma1, true, isCNY)}\n` +
+            `MA${monitor.ma2Period}（中）：${fmtVal(ma2, true, isCNY)}\n` +
+            `MA${monitor.ma3Period}（长）：${fmtVal(ma3, true, isCNY)}\n` +
+            conditions
+              .map((c) => {
+                const sideLabels: Record<string, string> = {
+                  price: "当前价",
+                  ma1: `MA${monitor.ma1Period}`,
+                  ma2: `MA${monitor.ma2Period}`,
+                  ma3: `MA${monitor.ma3Period}`,
+                };
+                return `${sideLabels[c.left]} ${c.op} ${sideLabels[c.right]}`;
+              })
+              .join("，");
 
-        try {
-          await sendDingTalk(msg, monitor.dingtalkWebhook);
-          newHasSentSignal = true;
-          logger.info(`Signal sent for ${monitor.symbol}: ${signalLabel}`);
-        } catch (err) {
-          logger.error(`Failed to send DingTalk for ${monitor.symbol}:`, err);
+          try {
+            await sendDingTalk(msg, monitor.dingtalkWebhook);
+            newHasSentSignal = true;
+            logger.info(`Signal sent for ${monitor.symbol}: ${signalLabel}`);
+          } catch (err) {
+            logger.error(`Failed to send DingTalk for ${monitor.symbol}:`, err);
+          }
         }
       }
 
