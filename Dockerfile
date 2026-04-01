@@ -9,6 +9,7 @@ RUN npm install -g pnpm@9
 # 复制 workspace 配置
 COPY package.json pnpm-lock.yaml ./
 COPY pnpm-workspace.yaml ./
+COPY tsconfig.base.json ./
 
 # 复制所有 packages
 COPY artifacts/api-server ./artifacts/api-server
