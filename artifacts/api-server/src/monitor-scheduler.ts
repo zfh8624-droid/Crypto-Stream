@@ -226,7 +226,9 @@ class MonitorScheduler {
       const ma1 = calcMA(closes, monitor.ma1Period, monitor.maType as MAType);
       const ma2 = calcMA(closes, monitor.ma2Period, monitor.maType as MAType);
       const ma3 = calcMA(closes, monitor.ma3Period, monitor.maType as MAType);
+      const ma10 = calcMA(closes, 10, "SMA");
       const price = closes[closes.length - 1];
+      const prevClose = closes.length >= 2 ? closes[closes.length - 2] : null;
 
       // 解析条件
       let conditions: Condition[];
@@ -329,6 +331,71 @@ class MonitorScheduler {
         }
       }
 
+      // ========== 离场信号检测 ==========
+      let shouldSendExitSignal = false;
+      let newHasSentExitSignal = monitor.hasSentExitSignal;
+      let newPrevClosePrice = monitor.prevClosePrice;
+
+      // 只有启用离场监控且已进场时才检测
+      if (monitor.enableExitMonitor && monitor.inPosition && !monitor.hasSentExitSignal) {
+        // 检查是否是A股且在休市时间
+        const skipDueToClosed = monitor.assetType === "ashare" && isAShareMarketClosed();
+
+        if (!skipDueToClosed && monitor.exitMarketMode) {
+          if (monitor.exitMarketMode === "bullish") {
+            // 牛市模式：价格 <= MA10 触发离场
+            if (ma10 != null && price <= ma10) {
+              shouldSendExitSignal = true;
+              logger.debug(`牛市离场信号触发: ${monitor.symbol} price=${price} <= MA10=${ma10}`);
+            }
+          } else if (monitor.exitMarketMode === "bearish") {
+            // 熊市模式：当天收盘价 <= 上一天收盘价触发离场
+            // 保存前一天收盘价
+            newPrevClosePrice = price;
+            
+            if (monitor.prevClosePrice != null && price <= monitor.prevClosePrice) {
+              shouldSendExitSignal = true;
+              logger.debug(`熊市离场信号触发: ${monitor.symbol} price=${price} <= prevClose=${monitor.prevClosePrice}`);
+            }
+          }
+        }
+      }
+
+      // 发送离场信号
+      if (shouldSendExitSignal && monitor.dingtalkWebhook) {
+        const now = new Date();
+        const timeStr = now.toLocaleString("zh-CN", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false
+        });
+
+        const isCNY = monitor.assetType === "ashare";
+        const marketModeLabel = monitor.exitMarketMode === "bullish" ? "牛市" : "熊市";
+        
+        const msg =
+          `🚨 离场信号！\n` +
+          `触发时间：${timeStr}\n` +
+          `标的：${monitor.displayName}（${monitor.symbol}）\n` +
+          `市场模式：${marketModeLabel}\n` +
+          `当前价：${fmtVal(price, true, isCNY)}\n` +
+          (monitor.exitMarketMode === "bullish" && ma10 != null ? `MA10：${fmtVal(ma10, true, isCNY)}\n` : "") +
+          (monitor.exitMarketMode === "bearish" && monitor.prevClosePrice != null ? `上一日收盘价：${fmtVal(monitor.prevClosePrice, true, isCNY)}\n` : "") +
+          `建议考虑离场！`;
+
+        try {
+          await sendDingTalk(msg, monitor.dingtalkWebhook);
+          newHasSentExitSignal = true;
+          logger.info(`Exit signal sent for ${monitor.symbol}`);
+        } catch (err) {
+          logger.error(`Failed to send exit DingTalk for ${monitor.symbol}:`, err);
+        }
+      }
+
       // 更新数据库
       await db
         .update(monitorsTable)
@@ -339,6 +406,8 @@ class MonitorScheduler {
           prevMa1GtMa2: ma1GtMa2,
           trendStatus: newTrendStatus,
           lastSignalAt: isNewSignal ? new Date() : monitor.lastSignalAt,
+          hasSentExitSignal: newHasSentExitSignal,
+          prevClosePrice: newPrevClosePrice,
         })
         .where(eq(monitorsTable.id, monitor.id));
 

@@ -4,6 +4,7 @@ export const assetTypeEnum = pgEnum('asset_type', ['crypto', 'ashare']);
 export const maTypeEnum = pgEnum('ma_type', ['SMA', 'EMA', 'WMA']);
 export const signalTypeEnum = pgEnum('signal_type', ['golden', 'death']);
 export const trendStatusEnum = pgEnum('trend_status', ['bullish', 'bearish', 'neutral']);
+export const exitMarketModeEnum = pgEnum('exit_market_mode', ['bullish', 'bearish']);
 
 export type AssetType = 'crypto' | 'ashare';
 export type MAType = 'SMA' | 'EMA' | 'WMA';
@@ -15,6 +16,8 @@ export interface Condition {
   op: '>' | '<' | '=';
   right: 'price' | 'ma1' | 'ma2' | 'ma3';
 }
+
+export type ExitMarketMode = 'bullish' | 'bearish';
 
 export const monitorsTable = pgTable(
   'monitors',
@@ -40,6 +43,12 @@ export const monitorsTable = pgTable(
     trendStatus: trendStatusEnum('trend_status').notNull().default('neutral'),
     createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
+    // 离场监控相关字段
+    enableExitMonitor: boolean('enable_exit_monitor').notNull().default(false),
+    inPosition: boolean('in_position').notNull().default(false),
+    exitMarketMode: exitMarketModeEnum('exit_market_mode'),
+    prevClosePrice: integer('prev_close_price'),
+    hasSentExitSignal: boolean('has_sent_exit_signal').notNull().default(false),
   },
   (table) => {
     return {
