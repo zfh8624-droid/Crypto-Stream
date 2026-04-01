@@ -1,14 +1,14 @@
-import { pgTable, text, serial, timestamp, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
+import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
-export const usersTable = pgTable(
+export const usersTable = sqliteTable(
   'users',
   {
-    id: serial('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
     username: text('username').notNull(),
     passwordHash: text('password_hash').notNull(),
-    createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
-    isAdmin: boolean('is_admin').notNull().default(false),
-    isActive: boolean('is_active').notNull().default(true),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => Date.now()),
+    isAdmin: integer('is_admin', { mode: 'boolean' }).notNull().default(false),
+    isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   },
   (table) => {
     return {

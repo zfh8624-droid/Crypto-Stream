@@ -14,7 +14,7 @@
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
-    "@types/node": "catalog:",
-    "tsx": "catalog:"
+    "@types/node": "^25.3.5",
+    "tsx": "^4.21.0"
   }
 }
