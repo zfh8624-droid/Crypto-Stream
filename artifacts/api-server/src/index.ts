@@ -39,47 +39,51 @@ async function initAdminUser() {
   try {
     const bcrypt = await getBcrypt();
     
-    // 创建或检查 admin 用户
+    // 创建或更新 admin 用户
     const existingAdmin = await db.query.usersTable.findFirst({
       where: eq(usersTable.username, "admin"),
     });
 
+    const adminPasswordHash = await bcrypt.hash("admin123", 10);
     if (!existingAdmin) {
-      const passwordHash = await bcrypt.hash("admin123", 10);
       await db.insert(usersTable).values({
         username: "admin",
-        passwordHash,
+        passwordHash: adminPasswordHash,
         isAdmin: true,
       });
       logger.info("✅ 管理员用户已创建");
-      logger.info("   用户名: admin");
-      logger.info("   密码: admin123");
     } else {
-      logger.info("ℹ️  管理员用户已存在");
-      logger.info("   用户名: admin");
-      logger.info("   密码: admin123");
+      await db.update(usersTable).set({
+        passwordHash: adminPasswordHash,
+        isActive: true,
+      }).where(eq(usersTable.username, "admin"));
+      logger.info("✅ 管理员用户密码已重置");
     }
+    logger.info("   用户名: admin");
+    logger.info("   密码: admin123");
 
-    // 创建或检查 wbz 用户
+    // 创建或更新 wbz 用户
     const existingWbz = await db.query.usersTable.findFirst({
       where: eq(usersTable.username, "wbz"),
     });
 
+    const wbzPasswordHash = await bcrypt.hash("wbz123", 10);
     if (!existingWbz) {
-      const passwordHash = await bcrypt.hash("wbz123", 10);
       await db.insert(usersTable).values({
         username: "wbz",
-        passwordHash,
+        passwordHash: wbzPasswordHash,
         isAdmin: false,
       });
       logger.info("✅ wbz 用户已创建");
-      logger.info("   用户名: wbz");
-      logger.info("   密码: wbz123");
     } else {
-      logger.info("ℹ️  wbz 用户已存在");
-      logger.info("   用户名: wbz");
-      logger.info("   密码: wbz123");
+      await db.update(usersTable).set({
+        passwordHash: wbzPasswordHash,
+        isActive: true,
+      }).where(eq(usersTable.username, "wbz"));
+      logger.info("✅ wbz 用户密码已重置");
     }
+    logger.info("   用户名: wbz");
+    logger.info("   密码: wbz123");
   } catch (error) {
     logger.error({ err: error }, "初始化用户失败");
   }
