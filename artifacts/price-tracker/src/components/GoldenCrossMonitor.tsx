@@ -1093,8 +1093,7 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
 
               if (res.ok) {
                 console.log(`[updateConfig] Saved to backend successfully`);
-                // 重新加载后端监控，更新本地状态
-                await loadBackendMonitors();
+                // 不重新加载后端监控，保持本地状态（避免刚更新就被覆盖）
               } else {
                 console.error(`[updateConfig] Failed to save to backend:`, res.status);
               }
