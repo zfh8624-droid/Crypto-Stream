@@ -1,24 +1,11 @@
-const isProduction = process.env.NODE_ENV === "production";
+// 统一使用 bcryptjs（纯 JavaScript，无需编译）
 let bcryptInstance: any = null;
 
 export async function loadBcrypt() {
   if (bcryptInstance) return bcryptInstance;
   
-  if (isProduction) {
-    // 生产环境使用 bcrypt
-    try {
-      const bcrypt = await import("bcrypt");
-      bcryptInstance = bcrypt.default || bcrypt;
-    } catch (error) {
-      // 如果 bcrypt 加载失败，回退到 bcryptjs
-      const bcryptjs = await import("bcryptjs");
-      bcryptInstance = bcryptjs.default || bcryptjs;
-    }
-  } else {
-    // 开发环境使用 bcryptjs
-    const bcryptjs = await import("bcryptjs");
-    bcryptInstance = bcryptjs.default || bcryptjs;
-  }
+  const bcryptjs = await import("bcryptjs");
+  bcryptInstance = bcryptjs.default || bcryptjs;
   
   return bcryptInstance;
 }
