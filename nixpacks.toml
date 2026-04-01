@@ -1,0 +1,13 @@
+[phases.setup]
+  nixPkgs = ["...", "nodejs", "pnpm"]
+
+[phases.install]
+  cmds = ["pnpm install --no-frozen-lockfile"]
+  dependsOn = ["setup"]
+
+[phases.build]
+  cmds = ["cd artifacts/api-server && pnpm run build"]
+  dependsOn = ["install"]
+
+[start]
+  cmd = "cd artifacts/api-server && pnpm run start"
