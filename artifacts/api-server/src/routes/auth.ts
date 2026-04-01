@@ -20,8 +20,10 @@ const router: IRouter = Router();
 router.post("/login", async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
+    console.log("[Login] 尝试登录用户:", username);
 
     if (!username || !password) {
+      console.log("[Login] 用户名或密码为空");
       return res.status(400).json({ error: "用户名和密码不能为空" });
     }
 
@@ -29,14 +31,25 @@ router.post("/login", async (req: Request, res: Response) => {
       where: eq(usersTable.username, username),
     });
 
-    if (!user || !user.isActive) {
+    console.log("[Login] 查询到的用户:", user);
+
+    if (!user) {
+      console.log("[Login] 用户不存在");
+      return res.status(401).json({ error: "用户名或密码错误" });
+    }
+
+    if (!user.isActive) {
+      console.log("[Login] 用户未激活:", user.isActive);
       return res.status(401).json({ error: "用户名或密码错误" });
     }
 
     const bcrypt = await getBcrypt();
+    console.log("[Login] 验证密码...");
     const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+    console.log("[Login] 密码匹配结果:", passwordMatch);
 
     if (!passwordMatch) {
+      console.log("[Login] 密码不匹配");
       return res.status(401).json({ error: "用户名或密码错误" });
     }
 
