@@ -22,9 +22,16 @@ COPY scripts ./scripts
 # 安装依赖
 RUN pnpm install --no-frozen-lockfile
 
-# 构建 api-server
+# 构建前端
+WORKDIR /app/artifacts/price-tracker
+RUN pnpm run build
+
+# 构建后端
 WORKDIR /app/artifacts/api-server
 RUN pnpm run build
+
+# 把前端构建产物复制到后端 public 目录
+RUN mkdir -p public && cp -r ../price-tracker/dist/public/* public/
 
 # 暴露端口
 EXPOSE 3000
