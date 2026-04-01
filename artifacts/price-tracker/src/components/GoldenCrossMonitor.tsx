@@ -11,6 +11,8 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export type AssetType = "crypto" | "ashare";
 
+type ExitMarketMode = "bullish" | "bearish";
+
 interface BackendMonitor {
   id?: number;
   userId?: number;
@@ -26,6 +28,12 @@ interface BackendMonitor {
   conditions: Condition[];
   signalType: SignalType;
   dingtalkWebhook?: string;
+  // 离场监控相关字段
+  enableExitMonitor?: boolean;
+  inPosition?: boolean;
+  exitMarketMode?: ExitMarketMode;
+  prevClosePrice?: number;
+  hasSentExitSignal?: boolean;
 }
 
 export interface MonitoredSymbol {
@@ -54,6 +62,10 @@ interface SymbolConfig {
   ma3Period: number;
   conditions: Condition[];
   signalType: SignalType;
+  // 离场监控相关字段
+  enableExitMonitor?: boolean;
+  inPosition?: boolean;
+  exitMarketMode?: ExitMarketMode;
 }
 
 type TrendStatus = "bullish" | "bearish" | "neutral";
@@ -109,6 +121,9 @@ function getDefaultConfig(assetType: AssetType): SymbolConfig {
       ma3Period: 20,
       conditions: DEFAULT_CONDITIONS,
       signalType: "golden",
+      enableExitMonitor: false,
+      inPosition: false,
+      exitMarketMode: "bullish",
     };
   }
   return {
@@ -120,6 +135,9 @@ function getDefaultConfig(assetType: AssetType): SymbolConfig {
     ma3Period: 60,
     conditions: DEFAULT_CONDITIONS,
     signalType: "golden",
+    enableExitMonitor: false,
+    inPosition: false,
+    exitMarketMode: "bullish",
   };
 }
 
@@ -651,6 +669,9 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
         ma3Period: monitor.ma3Period,
         conditions: monitor.conditions,
         signalType: monitor.signalType,
+        enableExitMonitor: monitor.enableExitMonitor ?? false,
+        inPosition: monitor.inPosition ?? false,
+        exitMarketMode: monitor.exitMarketMode ?? "bullish",
       };
     }
     
@@ -1054,6 +1075,9 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
                 conditions: updated.conditions,
                 signalType: updated.signalType,
                 dingtalkWebhook: dingtalkWebhook,
+                enableExitMonitor: updated.enableExitMonitor ?? false,
+                inPosition: updated.inPosition ?? false,
+                exitMarketMode: updated.exitMarketMode ?? "bullish",
               };
 
               console.log(`[updateConfig] Saving to backend:`, monitorData);
@@ -1403,6 +1427,55 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
                         >
                           <Plus className="w-3 h-3" /> 添加条件
                         </button>
+                      </div>
+
+                      {/* 离场监控配置 */}
+                      <div className="mt-8">
+                        <Separator />
+                        <div style={{ height: '16px' }}></div>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-semibold">🚨 离场监控</Label>
+                            <SimpleSwitch
+                              checked={cfg.enableExitMonitor ?? false}
+                              onCheckedChange={(v) => updateConfig(sym.symbol, { enableExitMonitor: v })}
+                            />
+                          </div>
+                          
+                          {cfg.enableExitMonitor && (
+                            <div className="space-y-3 pt-2">
+                              {/* 已进场开关 */}
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs">已进场</Label>
+                                <SimpleSwitch
+                                  checked={cfg.inPosition ?? false}
+                                  onCheckedChange={(v) => updateConfig(sym.symbol, { inPosition: v })}
+                                />
+                              </div>
+                              
+                              {/* 市场模式选择 */}
+                              <div className="space-y-1">
+                                <Label className="text-xs">市场模式</Label>
+                                <select
+                                  className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs focus:outline-none"
+                                  value={cfg.exitMarketMode ?? "bullish"}
+                                  onChange={(e) => updateConfig(sym.symbol, { exitMarketMode: e.target.value as ExitMarketMode })}
+                                >
+                                  <option value="bullish">🐂 牛市 - 价格≤MA10离场</option>
+                                  <option value="bearish">🐻 熊市 - 收盘价≤昨日离场</option>
+                                </select>
+                              </div>
+                              
+                              {/* 说明文字 */}
+                              <div className="text-[10px] text-muted-foreground">
+                                {cfg.exitMarketMode === "bullish" 
+                                  ? "牛市模式：当价格跌破或等于MA10时发送离场提醒"
+                                  : "熊市模式：当当天收盘价小于等于上一天收盘价时发送离场提醒"
+                                }
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
