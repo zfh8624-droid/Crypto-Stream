@@ -11,10 +11,9 @@ COPY package.json pnpm-lock.yaml ./
 COPY pnpm-workspace.yaml ./
 COPY tsconfig.base.json ./
 
-# 复制所有 packages
+# 复制所有需要的 packages（只复制需要部署的）
 COPY artifacts/api-server ./artifacts/api-server
 COPY artifacts/price-tracker ./artifacts/price-tracker
-COPY artifacts/mockup-sandbox ./artifacts/mockup-sandbox
 COPY lib/db ./lib/db
 COPY lib/api-zod ./lib/api-zod
 COPY lib/api-client-react ./lib/api-client-react
