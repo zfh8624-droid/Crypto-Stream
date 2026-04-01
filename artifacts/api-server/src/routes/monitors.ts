@@ -39,25 +39,29 @@ router.get("/monitors", async (req: Request, res: Response) => {
 
 router.post("/monitors", async (req: Request, res: Response) => {
   try {
+    console.log("[POST /monitors] 收到请求:", req.body);
     if (!req.user) {
       return res.sendStatus(401);
     }
 
     const userId = parseInt(req.user.id);
     const symbol = req.body.symbol;
+    console.log("[POST /monitors] userId:", userId, "symbol:", symbol);
     
     // 先检查是否已存在相同的用户+币种组合
     const existing = await db.select().from(monitorsTable)
       .where(eq(monitorsTable.userId, userId))
       .where(eq(monitorsTable.symbol, symbol));
+    console.log("[POST /monitors] existing:", existing);
 
     if (existing.length > 0) {
       // 已存在，执行更新而不是创建
       const monitorData = {
         ...req.body,
         userId,
-        updatedAt: new Date(),
+        updatedAt: Date.now(),
       };
+      console.log("[POST /monitors] 更新数据:", monitorData);
       
       const [updatedMonitor] = await db
         .update(monitorsTable)
@@ -65,6 +69,7 @@ router.post("/monitors", async (req: Request, res: Response) => {
         .where(eq(monitorsTable.id, existing[0].id))
         .returning();
       
+      console.log("[POST /monitors] 更新成功:", updatedMonitor);
       res.json(updatedMonitor);
     } else {
       // 不存在，创建新记录
@@ -72,12 +77,14 @@ router.post("/monitors", async (req: Request, res: Response) => {
         ...req.body,
         userId,
       };
+      console.log("[POST /monitors] 创建数据:", monitorData);
 
       const [newMonitor] = await db
         .insert(monitorsTable)
         .values(monitorData)
         .returning();
 
+      console.log("[POST /monitors] 创建成功:", newMonitor);
       res.status(201).json(newMonitor);
     }
   } catch (error) {
@@ -112,7 +119,7 @@ router.put("/monitors/:id", async (req: Request, res: Response) => {
 
     const monitorData = {
       ...req.body,
-      updatedAt: new Date(),
+      updatedAt: Date.now(),
     };
 
     const [updatedMonitor] = await db
@@ -186,7 +193,7 @@ router.put("/monitors/batch/update-webhook", async (req: Request, res: Response)
       .update(monitorsTable)
       .set({
         dingtalkWebhook: webhookUrl,
-        updatedAt: new Date(),
+        updatedAt: Date.now(),
       })
       .where(eq(monitorsTable.userId, userId));
 
