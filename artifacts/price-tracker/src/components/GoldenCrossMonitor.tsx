@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleSwitch } from "@/components/ui/simple-switch";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -46,11 +47,111 @@ type Side = "price" | "ma1" | "ma2" | "ma3";
 type Op = ">" | "<" | "=";
 type SignalType = "golden" | "death";
 
-interface Condition {
+type ConditionType = "ma" | "rsi" | "kdj" | "volume";
+
+interface MACondition {
   id: string;
+  type: "ma";
   left: Side;
   op: Op;
   right: Side;
+}
+
+interface RSICondition {
+  id: string;
+  type: "rsi";
+  period: number;
+  op: Op;
+  value: number;
+}
+
+interface KDJCondition {
+  id: string;
+  type: "kdj";
+  line: "k" | "d" | "j";
+  op: Op;
+  value: number;
+}
+
+interface VolumeCondition {
+  id: string;
+  type: "volume";
+  period: number;
+  op: Op;
+  ratio: number;
+}
+
+type Condition = MACondition | RSICondition | KDJCondition | VolumeCondition;
+
+// 指标计算函数
+function calcRSI(closes: number[], period: number): number | null {
+  if (closes.length < period + 1) return null;
+  
+  const gains: number[] = [];
+  const losses: number[] = [];
+  
+  for (let i = 1; i <= period; i++) {
+    const change = closes[i] - closes[i - 1];
+    gains.push(Math.max(0, change));
+    losses.push(Math.max(0, -change));
+  }
+  
+  let avgGain = gains.reduce((a, b) => a + b, 0) / period;
+  let avgLoss = losses.reduce((a, b) => a + b, 0) / period;
+  
+  for (let i = period + 1; i < closes.length; i++) {
+    const change = closes[i] - closes[i - 1];
+    const gain = Math.max(0, change);
+    const loss = Math.max(0, -change);
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+  }
+  
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
+}
+
+function calcKDJ(highs: number[], lows: number[], closes: number[]): { k: number | null; d: number | null; j: number | null } {
+  if (closes.length < 9) {
+    return { k: null, d: null, j: null };
+  }
+  
+  const n = 9;
+  const m1 = 3;
+  const m2 = 3;
+  
+  const rsvs: number[] = [];
+  
+  for (let i = n - 1; i < closes.length; i++) {
+    const high = Math.max(...highs.slice(i - n + 1, i + 1));
+    const low = Math.min(...lows.slice(i - n + 1, i + 1));
+    const close = closes[i];
+    let rsv = 0;
+    if (high !== low) {
+      rsv = ((close - low) / (high - low)) * 100;
+    }
+    rsvs.push(rsv);
+  }
+  
+  let k = 50;
+  let d = 50;
+  
+  for (let i = 0; i < rsvs.length; i++) {
+    k = ((k * (m1 - 1)) + rsvs[i]) / m1;
+    d = ((d * (m2 - 1)) + k) / m2;
+  }
+  
+  const j = 3 * k - 2 * d;
+  return { k, d, j };
+}
+
+function calcVolumeRatio(volumes: number[], period: number): number | null {
+  if (volumes.length < period + 1) return null;
+  const currentVol = volumes[volumes.length - 1];
+  const avgVol = volumes.slice(-period - 1, -1).reduce((a, b) => a + b, 0) / period;
+  if (avgVol === 0) return null;
+  return currentVol / avgVol;
 }
 
 interface SymbolConfig {
@@ -74,6 +175,9 @@ interface SymbolRuntime {
   ma1Val: number | null;
   ma2Val: number | null;
   ma3Val: number | null;
+  rsiVal: number | null;
+  kdjVals: { k: number | null; d: number | null; j: number | null };
+  volumeRatio: number | null;
   condResults: boolean[];
   isGolden: boolean;
   inSignal: boolean;
@@ -87,6 +191,9 @@ interface SymbolRuntime {
 
 interface ClosesCache {
   closes: number[];
+  highs: number[];
+  lows: number[];
+  volumes: number[];
   fetchedAt: number;
   interval: string;
   maxPeriod: number;
@@ -105,9 +212,16 @@ const SIDE_LABELS: Record<Side, string> = {
   ma3: "MA长",
 };
 
+const CONDITION_TYPE_LABELS: Record<ConditionType, string> = {
+  ma: "均线",
+  rsi: "RSI",
+  kdj: "KDJ",
+  volume: "成交量",
+};
+
 const DEFAULT_CONDITIONS: Condition[] = [
-  { id: "c1", left: "price", op: ">", right: "ma3" },
-  { id: "c2", left: "ma1", op: ">", right: "ma2" },
+  { id: "c1", type: "ma", left: "price", op: ">", right: "ma3" },
+  { id: "c2", type: "ma", left: "ma1", op: ">", right: "ma2" },
 ];
 
 function getDefaultConfig(assetType: AssetType): SymbolConfig {
@@ -175,6 +289,9 @@ interface PersistedRuntime {
   ma1Val: number | null;
   ma2Val: number | null;
   ma3Val: number | null;
+  rsiVal: number | null;
+  kdjVals: { k: number | null; d: number | null; j: number | null };
+  volumeRatio: number | null;
   condResults: boolean[];
   isGolden: boolean;
   prevMa1GtMa2: boolean | null;
@@ -199,10 +316,18 @@ function loadConfig(assetType: AssetType, symbol: string, isGuest: boolean = fal
     }
     const p = JSON.parse(raw) as Partial<SymbolConfig>;
     
+    // 兼容旧的 conditions（自动添加 type="ma"）
+    const migratedConditions = (p.conditions ?? []).map(c => {
+      if (!('type' in c)) {
+        return { ...c, type: 'ma' } as MACondition;
+      }
+      return c as Condition;
+    });
+    
     const result = {
       ...defaultConfig,
       ...p,
-      conditions: Array.isArray(p.conditions) && p.conditions.length > 0 ? p.conditions : [...DEFAULT_CONDITIONS],
+      conditions: migratedConditions.length > 0 ? migratedConditions : [...DEFAULT_CONDITIONS],
     };
     console.log(`[loadConfig] Loaded result:`, result);
     return result;
@@ -242,6 +367,9 @@ function loadRuntime(assetType: AssetType, symbol: string, isGuest: boolean = fa
       ma1Val: null,
       ma2Val: null,
       ma3Val: null,
+      rsiVal: null,
+      kdjVals: { k: null, d: null, j: null },
+      volumeRatio: null,
       condResults: [],
       isGolden: false,
       prevMa1GtMa2: null,
@@ -256,6 +384,9 @@ function loadRuntime(assetType: AssetType, symbol: string, isGuest: boolean = fa
       ma1Val: loaded.ma1Val ?? null,
       ma2Val: loaded.ma2Val ?? null,
       ma3Val: loaded.ma3Val ?? null,
+      rsiVal: loaded.rsiVal ?? null,
+      kdjVals: loaded.kdjVals ?? { k: null, d: null, j: null },
+      volumeRatio: loaded.volumeRatio ?? null,
       condResults: loaded.condResults ?? [],
       isGolden: loaded.isGolden ?? false,
       prevMa1GtMa2: loaded.prevMa1GtMa2 ?? null,
@@ -269,6 +400,9 @@ function loadRuntime(assetType: AssetType, symbol: string, isGuest: boolean = fa
       ma1Val: null,
       ma2Val: null,
       ma3Val: null,
+      rsiVal: null,
+      kdjVals: { k: null, d: null, j: null },
+      volumeRatio: null,
       condResults: [],
       isGolden: false,
       prevMa1GtMa2: null,
@@ -290,7 +424,7 @@ async function apiFetchCloses(
   interval: string,
   type: AssetType,
   limit: number
-): Promise<number[]> {
+): Promise<{ closes: number[]; highs: number[]; lows: number[]; volumes: number[] }> {
   const params = new URLSearchParams({ symbol, interval, type, limit: String(limit) });
   const res = await fetch(`/api/kline/data?${params}`);
   let errText = "";
@@ -298,10 +432,17 @@ async function apiFetchCloses(
     try { errText = await res.text(); } catch { }
     throw new Error(`K线请求失败 (${res.status})：${errText.slice(0, 120)}`);
   }
-  const json = await res.json() as { closes?: number[] };
+  const json = await res.json() as { closes?: number[]; highs?: number[]; lows?: number[]; volumes?: number[] };
   if (!Array.isArray(json.closes)) throw new Error("K线响应格式错误");
   if (json.closes.length === 0) throw new Error("K线数据为空（非交易时段或代码有误）");
-  return json.closes;
+  // 向后兼容：如果没有 highs/lows/volumes，用 closes 长度的 0 数组
+  const len = json.closes.length;
+  return {
+    closes: json.closes,
+    highs: json.highs ?? new Array(len).fill(0),
+    lows: json.lows ?? new Array(len).fill(0),
+    volumes: json.volumes ?? new Array(len).fill(0),
+  };
 }
 
 async function sendAlert(content: string, webhookUrl: string) {
@@ -332,23 +473,58 @@ function evalCond(
   price: number | null,
   ma1: number | null,
   ma2: number | null,
-  ma3: number | null
+  ma3: number | null,
+  rsiVal: number | null,
+  kdjVals: { k: number | null; d: number | null; j: number | null },
+  volumeRatio: number | null
 ): boolean {
-  const l = getSideVal(c.left, price, ma1, ma2, ma3);
-  const r = getSideVal(c.right, price, ma1, ma2, ma3);
-  if (l == null || r == null) return false;
-  switch (c.op) {
-    case ">": return l > r;
-    case "<": return l < r;
-    case "=": {
-      const denom = Math.max(Math.abs(l), Math.abs(r), 1e-10);
-      return Math.abs(l - r) / denom < 1e-4;
+  switch (c.type) {
+    case "ma": {
+      const l = getSideVal(c.left, price, ma1, ma2, ma3);
+      const r = getSideVal(c.right, price, ma1, ma2, ma3);
+      if (l == null || r == null) return false;
+      switch (c.op) {
+        case ">": return l > r;
+        case "<": return l < r;
+        case "=": {
+          const denom = Math.max(Math.abs(l), Math.abs(r), 1e-10);
+          return Math.abs(l - r) / denom < 1e-4;
+        }
+      }
+    }
+    case "rsi": {
+      if (rsiVal == null) return false;
+      switch (c.op) {
+        case ">": return rsiVal > c.value;
+        case "<": return rsiVal < c.value;
+        case "=": return Math.abs(rsiVal - c.value) < 1e-4;
+      }
+    }
+    case "kdj": {
+      const val = kdjVals[c.line];
+      if (val == null) return false;
+      switch (c.op) {
+        case ">": return val > c.value;
+        case "<": return val < c.value;
+        case "=": return Math.abs(val - c.value) < 1e-4;
+      }
+    }
+    case "volume": {
+      if (volumeRatio == null) return false;
+      switch (c.op) {
+        case ">": return volumeRatio > c.ratio;
+        case "<": return volumeRatio < c.ratio;
+        case "=": return Math.abs(volumeRatio - c.ratio) < 1e-4;
+      }
     }
   }
 }
 
-function calcMAsFromCloses(
+function calculateIndicatorsFromCloses(
   closes: number[],
+  highs: number[],
+  lows: number[],
+  volumes: number[],
   price: number | null,
   cfg: SymbolConfig
 ) {
@@ -356,10 +532,23 @@ function calcMAsFromCloses(
     price != null && closes.length > 0
       ? [...closes.slice(0, -1), price]
       : closes;
+  const withLiveHighs =
+    price != null && highs.length > 0
+      ? [...highs.slice(0, -1), price]
+      : highs;
+  const withLiveLows =
+    price != null && lows.length > 0
+      ? [...lows.slice(0, -1), price]
+      : lows;
+  const withLiveVolumes = volumes;
+  
   return {
     ma1Val: calcMA(withLive, cfg.ma1Period, cfg.maType),
     ma2Val: calcMA(withLive, cfg.ma2Period, cfg.maType),
     ma3Val: calcMA(withLive, cfg.ma3Period, cfg.maType),
+    rsiVal: calcRSI(withLive, 14),
+    kdjVals: calcKDJ(withLiveHighs, withLiveLows, withLive),
+    volumeRatio: calcVolumeRatio(withLiveVolumes, 5),
   };
 }
 
@@ -419,6 +608,208 @@ function NumInput({
   );
 }
 
+// ConditionEditor 的子组件，放在外部，防止每次重新创建导致下拉框闪烁
+
+function TypeSelector({
+  cond,
+  onChange
+}: {
+  cond: Condition;
+  onChange: (c: Condition) => void;
+}) {
+  return (
+    <Select value={cond.type} onValueChange={(val) => {
+      const newType = val as ConditionType;
+      if (newType === cond.type) return;
+      const base = { id: cond.id, type: newType };
+      let newCond: Condition;
+      switch (newType) {
+        case "ma":
+          newCond = { ...base, left: "price", op: ">", right: "ma3" };
+          break;
+        case "rsi":
+          newCond = { ...base, period: 14, op: ">", value: 30 };
+          break;
+        case "kdj":
+          newCond = { ...base, line: "k", op: ">", value: 20 };
+          break;
+        case "volume":
+          newCond = { ...base, period: 5, op: ">", ratio: 2 };
+          break;
+      }
+      onChange(newCond);
+    }}>
+      <SelectTrigger className="h-7 w-20 text-xs px-2">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="ma">均线</SelectItem>
+        <SelectItem value="rsi">RSI</SelectItem>
+        <SelectItem value="kdj">KDJ</SelectItem>
+        <SelectItem value="volume">成交量</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+function MAConditionEditor({
+  cond,
+  onChange
+}: {
+  cond: MACondition;
+  onChange: (c: MACondition) => void;
+}) {
+  return (
+    <>
+      <select
+        className="h-7 rounded border border-input bg-background px-1.5 text-xs focus:outline-none"
+        value={cond.left}
+        onChange={(e) => onChange({ ...cond, left: e.target.value as Side })}
+      >
+        {SIDES.map((s) => (
+          <option key={s} value={s}>{SIDE_LABELS[s]}</option>
+        ))}
+      </select>
+      <select
+        className="h-7 w-10 rounded border border-input bg-background px-1.5 text-xs focus:outline-none"
+        value={cond.op}
+        onChange={(e) => onChange({ ...cond, op: e.target.value as Op })}
+      >
+        {OPS.map((o) => (
+          <option key={o} value={o}>{o}</option>
+        ))}
+      </select>
+      <select
+        className="h-7 rounded border border-input bg-background px-1.5 text-xs focus:outline-none"
+        value={cond.right}
+        onChange={(e) => onChange({ ...cond, right: e.target.value as Side })}
+      >
+        {SIDES.map((s) => (
+          <option key={s} value={s}>{SIDE_LABELS[s]}</option>
+        ))}
+      </select>
+    </>
+  );
+}
+
+function RSIConditionEditor({
+  cond,
+  onChange
+}: {
+  cond: RSICondition;
+  onChange: (c: RSICondition) => void;
+}) {
+  return (
+    <>
+      <select
+        className="h-7 w-24 rounded border border-input bg-background px-1.5 text-xs focus:outline-none"
+        value={cond.period}
+        onChange={(e) => onChange({ ...cond, period: parseInt(e.target.value) })}
+      >
+        {[6, 9, 12, 14, 21, 28].map(p => (
+          <option key={p} value={p}>{p}日RSI</option>
+        ))}
+      </select>
+      <select
+        className="h-7 w-12 rounded border border-input bg-background px-1.5 text-xs focus:outline-none"
+        value={cond.op}
+        onChange={(e) => onChange({ ...cond, op: e.target.value as Op })}
+      >
+        {OPS.map((o) => (
+          <option key={o} value={o}>{o}</option>
+        ))}
+      </select>
+      <input
+        type="number"
+        min={0}
+        max={100}
+        value={cond.value}
+        onChange={(e) => onChange({ ...cond, value: parseFloat(e.target.value) || 0 })}
+        className="h-7 w-16 rounded border border-input bg-background px-1.5 text-xs focus:outline-none"
+      />
+    </>
+  );
+}
+
+function KDJConditionEditor({
+  cond,
+  onChange
+}: {
+  cond: KDJCondition;
+  onChange: (c: KDJCondition) => void;
+}) {
+  return (
+    <>
+      <select
+        className="h-7 w-16 rounded border border-input bg-background px-1.5 text-xs focus:outline-none"
+        value={cond.line}
+        onChange={(e) => onChange({ ...cond, line: e.target.value as "k" | "d" | "j" })}
+      >
+        <option value="k">K</option>
+        <option value="d">D</option>
+        <option value="j">J</option>
+      </select>
+      <select
+        className="h-7 w-12 rounded border border-input bg-background px-1.5 text-xs focus:outline-none"
+        value={cond.op}
+        onChange={(e) => onChange({ ...cond, op: e.target.value as Op })}
+      >
+        {OPS.map((o) => (
+          <option key={o} value={o}>{o}</option>
+        ))}
+      </select>
+      <input
+        type="number"
+        min={0}
+        max={100}
+        value={cond.value}
+        onChange={(e) => onChange({ ...cond, value: parseFloat(e.target.value) || 0 })}
+        className="h-7 w-16 rounded border border-input bg-background px-1.5 text-xs focus:outline-none"
+      />
+    </>
+  );
+}
+
+function VolumeConditionEditor({
+  cond,
+  onChange
+}: {
+  cond: VolumeCondition;
+  onChange: (c: VolumeCondition) => void;
+}) {
+  return (
+    <>
+      <select
+        className="h-7 w-24 rounded border border-input bg-background px-1.5 text-xs focus:outline-none"
+        value={cond.period}
+        onChange={(e) => onChange({ ...cond, period: parseInt(e.target.value) })}
+      >
+        {[3, 5, 10, 20].map(p => (
+          <option key={p} value={p}>{p}日均量</option>
+        ))}
+      </select>
+      <select
+        className="h-7 w-12 rounded border border-input bg-background px-1.5 text-xs focus:outline-none"
+        value={cond.op}
+        onChange={(e) => onChange({ ...cond, op: e.target.value as Op })}
+      >
+        {OPS.map((o) => (
+          <option key={o} value={o}>{o}</option>
+        ))}
+      </select>
+      <input
+        type="number"
+        min={0.1}
+        step={0.1}
+        value={cond.ratio}
+        onChange={(e) => onChange({ ...cond, ratio: parseFloat(e.target.value) || 1 })}
+        className="h-7 w-16 rounded border border-input bg-background px-1.5 text-xs focus:outline-none"
+      />
+      <span className="text-xs text-muted-foreground">倍</span>
+    </>
+  );
+}
+
 function ConditionEditor({
   cond,
   onChange,
@@ -430,39 +821,26 @@ function ConditionEditor({
   onRemove: () => void;
   canRemove: boolean;
 }) {
-  const sel = "h-7 rounded border border-input bg-background px-1.5 text-xs focus:outline-none";
   return (
-    <div className="flex items-center flex-wrap">
-      <select
-        className={`${sel} mr-4`}
-        value={cond.left}
-        onChange={(e) => onChange({ ...cond, left: e.target.value as Side })}
-      >
-        {SIDES.map((s) => (
-          <option key={s} value={s}>{SIDE_LABELS[s]}</option>
-        ))}
-      </select>
-      <select
-        className={`${sel} w-10 mr-4`}
-        value={cond.op}
-        onChange={(e) => onChange({ ...cond, op: e.target.value as Op })}
-      >
-        {OPS.map((o) => (
-          <option key={o} value={o}>{o}</option>
-        ))}
-      </select>
-      <select
-        className={`${sel} mr-4`}
-        value={cond.right}
-        onChange={(e) => onChange({ ...cond, right: e.target.value as Side })}
-      >
-        {SIDES.map((s) => (
-          <option key={s} value={s}>{SIDE_LABELS[s]}</option>
-        ))}
-      </select>
+    <div className="flex items-start gap-2 flex-wrap">
+      <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
+        <TypeSelector cond={cond} onChange={onChange} />
+        {cond.type === "ma" && (
+          <MAConditionEditor cond={cond} onChange={onChange as (c: MACondition) => void} />
+        )}
+        {cond.type === "rsi" && (
+          <RSIConditionEditor cond={cond} onChange={onChange as (c: RSICondition) => void} />
+        )}
+        {cond.type === "kdj" && (
+          <KDJConditionEditor cond={cond} onChange={onChange as (c: KDJCondition) => void} />
+        )}
+        {cond.type === "volume" && (
+          <VolumeConditionEditor cond={cond} onChange={onChange as (c: VolumeCondition) => void} />
+        )}
+      </div>
       {canRemove && (
         <button
-          className="text-muted-foreground hover:text-red-500 transition-colors ml-6"
+          className="text-muted-foreground hover:text-red-500 transition-colors pt-1"
           onClick={onRemove}
           title="删除条件"
         >
@@ -554,6 +932,9 @@ export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
         ma1Val: persistedRt.ma1Val,
         ma2Val: persistedRt.ma2Val,
         ma3Val: persistedRt.ma3Val,
+        rsiVal: persistedRt.rsiVal,
+        kdjVals: persistedRt.kdjVals,
+        volumeRatio: persistedRt.volumeRatio,
         condResults: persistedRt.condResults,
         isGolden: persistedRt.isGolden,
         inSignal: persistedRt.inSignal,
@@ -633,6 +1014,13 @@ export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
     // 先处理所有后端监控
     for (const [symbol, monitor] of Object.entries(backendMonitors)) {
       console.log('[config effect] Using backend data for', symbol);
+      // 兼容旧的 conditions（自动添加 type="ma"）
+      const migratedConditions = (monitor.conditions ?? []).map(c => {
+        if (!('type' in c)) {
+          return { ...c, type: 'ma' } as MACondition;
+        }
+        return c as Condition;
+      });
       initial[symbol] = {
         enabled: monitor.enabled,
         interval: monitor.interval,
@@ -640,7 +1028,7 @@ export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
         ma1Period: monitor.ma1Period,
         ma2Period: monitor.ma2Period,
         ma3Period: monitor.ma3Period,
-        conditions: monitor.conditions,
+        conditions: migratedConditions,
         signalType: monitor.signalType,
         enableExitMonitor: monitor.enableExitMonitor ?? false,
         inPosition: monitor.inPosition ?? false,
@@ -707,9 +1095,16 @@ export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
       const cached = closesCache.current[sym.symbol];
       if (!cached || cached.closes.length === 0) return;
 
-      const { ma1Val, ma2Val, ma3Val } = calcMAsFromCloses(cached.closes, sym.currentPrice, cfg);
+      const { ma1Val, ma2Val, ma3Val, rsiVal, kdjVals, volumeRatio } = calculateIndicatorsFromCloses(
+        cached.closes,
+        cached.highs,
+        cached.lows,
+        cached.volumes,
+        sym.currentPrice,
+        cfg
+      );
       const condResults = cfg.conditions.map((c) =>
-        evalCond(c, sym.currentPrice, ma1Val, ma2Val, ma3Val)
+        evalCond(c, sym.currentPrice, ma1Val, ma2Val, ma3Val, rsiVal, kdjVals, volumeRatio)
       );
       const isGolden = condResults.length > 0 && condResults.every(Boolean);
 
@@ -760,6 +1155,20 @@ export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
         // 只有在发生信号交叉、所有条件满足，且还没有发送过信号时，才发送新信号
         const isNewSignal = hasSignalCross && isGolden && !newHasSentSignal;
 
+        // 生成条件说明字符串
+        const condStrs: string[] = [];
+        for (const c of cfg.conditions) {
+          if (c.type === "ma") {
+            condStrs.push(`${SIDE_LABELS[c.left]} ${c.op} ${SIDE_LABELS[c.right]}`);
+          } else if (c.type === "rsi") {
+            condStrs.push(`RSI${c.period} ${c.op} ${c.value}`);
+          } else if (c.type === "kdj") {
+            condStrs.push(`KDJ${c.line.toUpperCase()} ${c.op} ${c.value}`);
+          } else if (c.type === "volume") {
+            condStrs.push(`成交量${c.period}日均量 ${c.op} ${c.ratio}倍`);
+          }
+        }
+
         const runtimeData: PersistedRuntime = {
           inSignal: isGolden,
           lastSignalAt: isNewSignal ? Date.now() : persistedRt.lastSignalAt,
@@ -768,6 +1177,9 @@ export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
           ma1Val,
           ma2Val,
           ma3Val,
+          rsiVal,
+          kdjVals,
+          volumeRatio,
           condResults,
           isGolden,
           prevMa1GtMa2: ma1GtMa2,
@@ -794,9 +1206,11 @@ export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
             `MA${cfg.ma1Period}（短）：${fmtVal(ma1Val, true, isCNY)}\n` +
             `MA${cfg.ma2Period}（中）：${fmtVal(ma2Val, true, isCNY)}\n` +
             `MA${cfg.ma3Period}（长）：${fmtVal(ma3Val, true, isCNY)}\n` +
-            cfg.conditions
-              .map((c) => `${SIDE_LABELS[c.left]} ${c.op} ${SIDE_LABELS[c.right]}`)
-              .join("，");
+            (rsiVal != null ? `RSI14: ${rsiVal.toFixed(2)}\n` : "") +
+            (kdjVals.k != null ? `KDJ(K): ${kdjVals.k.toFixed(2)}, KDJ(D): ${kdjVals.d?.toFixed(2)}, KDJ(J): ${kdjVals.j?.toFixed(2)}\n` : "") +
+            (volumeRatio != null ? `成交量比: ${volumeRatio.toFixed(2)}\n` : "") +
+            "触发条件：\n" +
+            condStrs.join("\n");
           sendAlert(msg, dingtalkWebhook).catch((e) => console.error("钉钉推送失败", e));
           newHasSentSignal = true;
           runtimeData.hasSentSignal = true;
@@ -812,6 +1226,9 @@ export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
             ma1Val: ma1Val ?? persistedRt.ma1Val,
             ma2Val: ma2Val ?? persistedRt.ma2Val,
             ma3Val: ma3Val ?? persistedRt.ma3Val,
+            rsiVal: rsiVal ?? persistedRt.rsiVal,
+            kdjVals: kdjVals ?? persistedRt.kdjVals,
+            volumeRatio: volumeRatio ?? persistedRt.volumeRatio,
             condResults: condResults.length > 0 ? condResults : persistedRt.condResults,
             isGolden: isGolden,
             inSignal: isGolden,
@@ -843,6 +1260,9 @@ export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
               ma1Val: persistedRt.ma1Val,
               ma2Val: persistedRt.ma2Val,
               ma3Val: persistedRt.ma3Val,
+              rsiVal: persistedRt.rsiVal,
+              kdjVals: persistedRt.kdjVals,
+              volumeRatio: persistedRt.volumeRatio,
               condResults: persistedRt.condResults,
               isGolden: persistedRt.isGolden,
               inSignal: persistedRt.inSignal,
@@ -858,9 +1278,12 @@ export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
       });
 
       try {
-        const closes = await apiFetchCloses(sym.symbol, cfg.interval, assetType, maxPeriod + 50);
+        const { closes, highs, lows, volumes } = await apiFetchCloses(sym.symbol, cfg.interval, assetType, maxPeriod + 50);
         closesCache.current[sym.symbol] = {
           closes,
+          highs,
+          lows,
+          volumes,
           fetchedAt: Date.now(),
           interval: cfg.interval,
           maxPeriod,
@@ -876,6 +1299,9 @@ export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
                 ma1Val: persistedRt.ma1Val,
                 ma2Val: persistedRt.ma2Val,
                 ma3Val: persistedRt.ma3Val,
+                rsiVal: persistedRt.rsiVal,
+                kdjVals: persistedRt.kdjVals,
+                volumeRatio: persistedRt.volumeRatio,
                 condResults: persistedRt.condResults,
                 isGolden: persistedRt.isGolden,
                 inSignal: persistedRt.inSignal,
@@ -953,7 +1379,7 @@ export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
   }, [
     symbols.map((s) => s.symbol).join(","),
     Object.entries(configs)
-      .map(([k, v]) => `${k}:${v.enabled}:${v.interval}:${v.maType}:${v.ma1Period}:${v.ma2Period}:${v.ma3Period}`)
+      .map(([k, v]) => `${k}:${v.enabled}:${v.interval}:${v.maType}:${v.ma1Period}:${v.ma2Period}:${v.ma3Period}:${JSON.stringify(v.conditions)}`)
       .sort()
       .join("|"),
     fetchAndActivate,
@@ -1076,10 +1502,18 @@ export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
           })();
         }
 
+        // 如果条件改变了，并且有缓存数据，立即重新计算指标
+        if (patch.conditions != null) {
+          const sym = displaySymbols.find(s => s.symbol === symbol);
+          if (sym && closesCache.current[symbol]) {
+            updateRuntimeFromCloses(sym, updated);
+          }
+        }
+        
         return { ...prev, [symbol]: updated };
       });
     },
-    [assetType, isGuest, token, userId, displaySymbols, dingtalkWebhook]
+    [assetType, isGuest, token, userId, displaySymbols, dingtalkWebhook, updateRuntimeFromCloses]
   );
 
   const handleToggle = useCallback(
@@ -1258,18 +1692,52 @@ export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
                       <span className="font-mono">{fmtVal(rt.ma2Val, true, isCNY)}</span>
                       <span className="text-muted-foreground">{cfg.maType}{cfg.ma3Period}</span>
                       <span className="font-mono">{fmtVal(rt.ma3Val, true, isCNY)}</span>
+                      {rt.rsiVal != null && (
+                        <>
+                          <span className="text-muted-foreground">RSI14</span>
+                          <span className="font-mono">{rt.rsiVal.toFixed(2)}</span>
+                        </>
+                      )}
+                      {rt.kdjVals.k != null && (
+                        <>
+                          <span className="text-muted-foreground">KDJ(K)</span>
+                          <span className="font-mono">{rt.kdjVals.k.toFixed(2)}</span>
+                          <span className="text-muted-foreground">KDJ(D)</span>
+                          <span className="font-mono">{rt.kdjVals.d?.toFixed(2)}</span>
+                          <span className="text-muted-foreground">KDJ(J)</span>
+                          <span className="font-mono">{rt.kdjVals.j?.toFixed(2)}</span>
+                        </>
+                      )}
+                      {rt.volumeRatio != null && (
+                        <>
+                          <span className="text-muted-foreground">成交量比</span>
+                          <span className="font-mono">{rt.volumeRatio.toFixed(2)}倍</span>
+                        </>
+                      )}
                     </div>
                     {rt.condResults && rt.condResults.length > 0 && (
                       <div className="space-y-0.5 pt-0.5">
                         {cfg.conditions.map((c, i) => {
                           const ok = rt.condResults[i] ?? false;
+                          let condStr: string;
+                          if (c.type === "ma") {
+                            condStr = `${SIDE_LABELS[c.left]} ${c.op} ${SIDE_LABELS[c.right]}`;
+                          } else if (c.type === "rsi") {
+                            condStr = `RSI${c.period} ${c.op} ${c.value}`;
+                          } else if (c.type === "kdj") {
+                            condStr = `KDJ${c.line.toUpperCase()} ${c.op} ${c.value}`;
+                          } else if (c.type === "volume") {
+                            condStr = `成交量${c.period}日均量 ${c.op} ${c.ratio}倍`;
+                          } else {
+                            condStr = "";
+                          }
                           return (
                             <div key={c.id} className="flex items-center gap-1.5">
                               <span className={ok ? "text-green-500" : "text-red-400"}>
                                 {ok ? "✅" : "❌"}
                               </span>
                               <span className="text-muted-foreground">
-                                {SIDE_LABELS[c.left]} {c.op} {SIDE_LABELS[c.right]}
+                                {condStr}
                               </span>
                             </div>
                           );
@@ -1390,6 +1858,7 @@ export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
                           onClick={() => {
                             const newCond: Condition = {
                               id: Date.now().toString(),
+                              type: "ma",
                               left: "price",
                               op: ">",
                               right: "ma1",
