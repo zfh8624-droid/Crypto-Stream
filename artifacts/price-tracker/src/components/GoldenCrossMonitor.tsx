@@ -476,6 +476,7 @@ function ConditionEditor({
 interface Props {
   assetType: AssetType;
   symbols: MonitoredSymbol[];
+  monitors?: any[];
 }
 
 function usePersistedState<T>(
@@ -512,54 +513,26 @@ function usePersistedState<T>(
   return [state, setPersistedState];
 }
 
-export function GoldenCrossMonitor({ assetType, symbols }: Props) {
+export function GoldenCrossMonitor({ assetType, symbols, monitors }: Props) {
   const intervals = assetType === "crypto" ? CRYPTO_INTERVALS : ASHARE_INTERVALS;
   const isCrypto = assetType === "crypto";
   const isCNY = assetType === "ashare";
   const { token, isGuest, user } = useAuth();
   const userId = user?.id;
 
-  const [backendMonitors, setBackendMonitors] = useState<Record<string, BackendMonitor>>({});
-  const [loadingMonitors, setLoadingMonitors] = useState(true);
-
-  // 从后端加载监控配置
-  const loadBackendMonitors = useCallback(async () => {
-    console.log('[loadBackendMonitors] Called, isGuest:', isGuest, 'token:', !!token, 'assetType:', assetType);
-    if (isGuest || !token) {
-      setLoadingMonitors(false);
-      return;
-    }
-    
-    try {
-      const res = await fetch("/api/monitors", {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      console.log('[loadBackendMonitors] Response status:', res.status);
-      if (res.ok) {
-        const monitors = await res.json() as BackendMonitor[];
-        console.log('[loadBackendMonitors] Raw monitors from API:', monitors);
-        const monitorMap: Record<string, BackendMonitor> = {};
-        for (const m of monitors) {
-          if (m.assetType === assetType) {
-            monitorMap[m.symbol] = m;
-          }
-        }
-        console.log('[loadBackendMonitors] Filtered monitors for assetType', assetType, ':', monitorMap);
-        setBackendMonitors(monitorMap);
+  // 从 props 的 monitors 生成 backendMonitors
+  const backendMonitors = useMemo<Record<string, BackendMonitor>>(() => {
+    if (!monitors) return {};
+    const monitorMap: Record<string, BackendMonitor> = {};
+    for (const m of monitors) {
+      if (m.assetType === assetType) {
+        monitorMap[m.symbol] = m;
       }
-    } catch (err) {
-      console.error("Failed to load backend monitors:", err);
-    } finally {
-      setLoadingMonitors(false);
     }
-  }, [token, isGuest, assetType]);
+    return monitorMap;
+  }, [monitors, assetType]);
 
-  // 初始加载后端监控
-  useEffect(() => {
-    if (!isGuest) {
-      loadBackendMonitors();
-    }
-  }, [loadBackendMonitors, isGuest]);
+  const loadingMonitors = false; // 不再需要加载状态，因为 monitors 来自 props
 
   // 移除：登录用户不使用 localStorage
 
@@ -650,10 +623,10 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
 
   // 用户模式下，后端数据加载完成后应用到configs
   useEffect(() => {
-    console.log('[config effect] Called, isGuest:', isGuest, 'loadingMonitors:', loadingMonitors);
+    console.log('[config effect] Called, isGuest:', isGuest);
     console.log('[config effect] symbols:', symbols);
     console.log('[config effect] backendMonitors:', backendMonitors);
-    if (isGuest || loadingMonitors) return;
+    if (isGuest) return;
     
     const initial: Record<string, SymbolConfig> = {};
     
@@ -685,7 +658,7 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
     
     console.log('[config effect] Setting configs:', initial);
     setConfigs(initial);
-  }, [symbols.map(s => s.symbol).join(","), assetType, isGuest, userId, backendMonitors, loadingMonitors]);
+  }, [symbols.map(s => s.symbol).join(","), assetType, isGuest, userId, backendMonitors]);
 
   // 当有新symbol时，加载对应的配置和运行时（处理所有 displaySymbols）
   useEffect(() => {
@@ -1106,7 +1079,7 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
         return { ...prev, [symbol]: updated };
       });
     },
-    [assetType, isGuest, token, userId, displaySymbols, dingtalkWebhook, loadBackendMonitors]
+    [assetType, isGuest, token, userId, displaySymbols, dingtalkWebhook]
   );
 
   const handleToggle = useCallback(

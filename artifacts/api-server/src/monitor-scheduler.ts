@@ -84,6 +84,54 @@ export function calcMA(
   }
 }
 
+// RSI计算函数
+export function calcRSI(closes: number[], period: number): number | null {
+  if (closes.length < period + 1) return null;
+  const gains: number[] = [];
+  const losses: number[] = [];
+  for (let i = closes.length - period; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    gains.push(Math.max(0, diff));
+    losses.push(Math.max(0, -diff));
+  }
+  const avgGain = gains.reduce((a, b) => a + b, 0) / period;
+  const avgLoss = losses.reduce((a, b) => a + b, 0) / period;
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
+}
+
+// KDJ计算函数
+export function calcKDJ(highs: number[], lows: number[], closes: number[]): { k: number | null; d: number | null; j: number | null } {
+  const period = 9;
+  if (highs.length < period || lows.length < period || closes.length < period) {
+    return { k: null, d: null, j: null };
+  }
+  const recentHighs = highs.slice(-period);
+  const recentLows = lows.slice(-period);
+  const recentCloses = closes.slice(-period);
+  const low = Math.min(...recentLows);
+  const high = Math.max(...recentHighs);
+  const close = recentCloses[recentCloses.length - 1];
+  let rsv = 50;
+  if (high !== low) {
+    rsv = ((close - low) / (high - low)) * 100;
+  }
+  const k = (2 / 3) * 50 + (1 / 3) * rsv;
+  const d = (2 / 3) * 50 + (1 / 3) * k;
+  const j = 3 * k - 2 * d;
+  return { k, d, j };
+}
+
+// 成交量比计算函数
+export function calcVolumeRatio(volumes: number[], period: number): number | null {
+  if (volumes.length < period + 1) return null;
+  const avgVolume = volumes.slice(-period - 1, -1).reduce((a, b) => a + b, 0) / period;
+  const currentVolume = volumes[volumes.length - 1];
+  if (avgVolume === 0) return null;
+  return currentVolume / avgVolume;
+}
+
 // 钉钉发送函数
 async function sendDingTalk(content: string, webhookUrl: string) {
   const res = await fetch(webhookUrl, {
@@ -97,12 +145,41 @@ async function sendDingTalk(content: string, webhookUrl: string) {
   return data;
 }
 
-interface Condition {
+type ConditionType = "ma" | "rsi" | "kdj" | "volume";
+
+interface MACondition {
   id: string;
+  type: "ma";
   left: "price" | "ma1" | "ma2" | "ma3";
   op: ">" | "<" | "=";
   right: "price" | "ma1" | "ma2" | "ma3";
 }
+
+interface RSICondition {
+  id: string;
+  type: "rsi";
+  period: number;
+  op: ">" | "<" | "=";
+  value: number;
+}
+
+interface KDJCondition {
+  id: string;
+  type: "kdj";
+  line: "k" | "d" | "j";
+  op: ">" | "<" | "=";
+  value: number;
+}
+
+interface VolumeCondition {
+  id: string;
+  type: "volume";
+  period: number;
+  op: ">" | "<" | "=";
+  ratio: number;
+}
+
+type Condition = MACondition | RSICondition | KDJCondition | VolumeCondition;
 
 function getSideVal(
   side: "price" | "ma1" | "ma2" | "ma3",
@@ -124,17 +201,58 @@ function evalCond(
   price: number | null,
   ma1: number | null,
   ma2: number | null,
-  ma3: number | null
+  ma3: number | null,
+  rsiVal: number | null,
+  kdjVals: { k: number | null; d: number | null; j: number | null },
+  volumeRatioVal: number | null
 ): boolean {
-  const l = getSideVal(c.left, price, ma1, ma2, ma3);
-  const r = getSideVal(c.right, price, ma1, ma2, ma3);
-  if (l == null || r == null) return false;
-  switch (c.op) {
-    case ">": return l > r;
-    case "<": return l < r;
-    case "=": {
-      const denom = Math.max(Math.abs(l), Math.abs(r), 1e-10);
-      return Math.abs(l - r) / denom < 1e-4;
+  switch (c.type) {
+    case "ma": {
+      const l = getSideVal(c.left, price, ma1, ma2, ma3);
+      const r = getSideVal(c.right, price, ma1, ma2, ma3);
+      if (l == null || r == null) return false;
+      switch (c.op) {
+        case ">": return l > r;
+        case "<": return l < r;
+        case "=": {
+          const denom = Math.max(Math.abs(l), Math.abs(r), 1e-10);
+          return Math.abs(l - r) / denom < 1e-4;
+        }
+      }
+    }
+    case "rsi": {
+      if (rsiVal == null) return false;
+      switch (c.op) {
+        case ">": return rsiVal > c.value;
+        case "<": return rsiVal < c.value;
+        case "=": {
+          const denom = Math.max(Math.abs(rsiVal), Math.abs(c.value), 1e-10);
+          return Math.abs(rsiVal - c.value) / denom < 1e-4;
+        }
+      }
+    }
+    case "kdj": {
+      const val = kdjVals[c.line];
+      if (val == null) return false;
+      switch (c.op) {
+        case ">": return val > c.value;
+        case "<": return val < c.value;
+        case "=": {
+          const denom = Math.max(Math.abs(val), Math.abs(c.value), 1e-10);
+          return Math.abs(val - c.value) / denom < 1e-4;
+        }
+      }
+    }
+    case "volume": {
+      if (volumeRatioVal == null) return false;
+      switch (c.op) {
+        case ">": return volumeRatioVal > c.ratio;
+        case "<": return volumeRatioVal < c.ratio;
+        case "=": {
+          const denom = Math.max(Math.abs(volumeRatioVal), Math.abs(c.ratio), 1e-10);
+          return Math.abs(volumeRatioVal - c.ratio) / denom < 1e-4;
+        }
+      }
     }
   }
 }
@@ -208,13 +326,19 @@ class MonitorScheduler {
       const limit = maxPeriod + 50;
 
       // 获取K线数据
-      let closes: number[];
+      let closes: number[], highs: number[], lows: number[], volumes: number[];
       if (monitor.assetType === "crypto") {
         const candles = await fetchBinanceKLines(monitor.symbol, monitor.interval, limit);
         closes = candles.map((c) => c.close);
+        highs = candles.map((c) => c.high);
+        lows = candles.map((c) => c.low);
+        volumes = candles.map((c) => c.volume);
       } else {
         const candles = await fetchSinaKLines(monitor.symbol, monitor.interval, limit);
         closes = candles.map((c) => c.close);
+        highs = candles.map((c) => c.high);
+        lows = candles.map((c) => c.low);
+        volumes = candles.map((c) => c.volume);
       }
 
       if (closes.length === 0) {
@@ -233,15 +357,29 @@ class MonitorScheduler {
       // 解析条件
       let conditions: Condition[];
       try {
-        conditions = typeof monitor.conditions === "string" 
+        const rawConditions = typeof monitor.conditions === "string" 
           ? JSON.parse(monitor.conditions) 
           : monitor.conditions as any;
+        // 兼容旧的 conditions（没有 type 字段的）
+        conditions = rawConditions.map((c: any) => {
+          if (c.type) return c;
+          return { id: c.id, type: "ma", left: c.left, op: c.op, right: c.right };
+        });
       } catch {
         conditions = [];
       }
 
+      // 计算新指标
+      const maxRSIPeriod = conditions.reduce((max, c) => c.type === "rsi" ? Math.max(max, c.period) : max, 0);
+      const rsiVal = maxRSIPeriod > 0 ? calcRSI(closes, maxRSIPeriod) : null;
+      
+      const kdjVals = calcKDJ(highs, lows, closes);
+      
+      const maxVolumePeriod = conditions.reduce((max, c) => c.type === "volume" ? Math.max(max, c.period) : max, 0);
+      const volumeRatioVal = maxVolumePeriod > 0 ? calcVolumeRatio(volumes, maxVolumePeriod) : null;
+
       // 评估条件
-      const condResults = conditions.map((c) => evalCond(c, price, ma1, ma2, ma3));
+      const condResults = conditions.map((c) => evalCond(c, price, ma1, ma2, ma3, rsiVal, kdjVals, volumeRatioVal));
       const isGolden = condResults.length > 0 && condResults.every(Boolean);
 
       // 检测交叉
@@ -309,17 +447,26 @@ class MonitorScheduler {
             `MA${monitor.ma1Period}（短）：${fmtVal(ma1, true, isCNY)}\n` +
             `MA${monitor.ma2Period}（中）：${fmtVal(ma2, true, isCNY)}\n` +
             `MA${monitor.ma3Period}（长）：${fmtVal(ma3, true, isCNY)}\n` +
-            conditions
+            `条件：${conditions
               .map((c) => {
-                const sideLabels: Record<string, string> = {
-                  price: "当前价",
-                  ma1: `MA${monitor.ma1Period}`,
-                  ma2: `MA${monitor.ma2Period}`,
-                  ma3: `MA${monitor.ma3Period}`,
-                };
-                return `${sideLabels[c.left]} ${c.op} ${sideLabels[c.right]}`;
+                switch (c.type) {
+                  case "ma":
+                    const sideLabels: Record<string, string> = {
+                      price: "当前价",
+                      ma1: `MA${monitor.ma1Period}`,
+                      ma2: `MA${monitor.ma2Period}`,
+                      ma3: `MA${monitor.ma3Period}`,
+                    };
+                    return `${sideLabels[c.left]} ${c.op} ${sideLabels[c.right]}`;
+                  case "rsi":
+                    return `RSI${c.period} ${c.op} ${c.value}`;
+                  case "kdj":
+                    return `KDJ${c.line.toUpperCase()} ${c.op} ${c.value}`;
+                  case "volume":
+                    return `成交量${c.period}日均量 ${c.op} ${c.ratio}倍`;
+                }
               })
-              .join("，");
+              .join("，")}`;
 
           try {
             await sendDingTalk(msg, monitor.dingtalkWebhook);

@@ -346,11 +346,17 @@ function SymbolInput({
   const handleAdd = () => {
     const rawSymbols = input.split(",").map(s => s.trim()).filter(s => s.length > 0);
     if (rawSymbols.length > 0) {
-      rawSymbols.forEach(rawSym => {
-        const sym = uppercase ? rawSym.toUpperCase() : rawSym.toLowerCase();
-        if (sym && !symbols.includes(sym)) {
-          onAdd(sym);
-        }
+      // 先去重，避免重复添加
+      const uniqueRawSymbols = [...new Set(rawSymbols)];
+      // 再处理大小写
+      const processedSymbols = uniqueRawSymbols.map(rawSym => 
+        uppercase ? rawSym.toUpperCase() : rawSym.toLowerCase()
+      );
+      // 再和已有的 symbols 去重
+      const newSymbols = processedSymbols.filter(sym => sym && !symbols.includes(sym));
+      
+      newSymbols.forEach(sym => {
+        onAdd(sym);
       });
       setInput("");
     }
@@ -895,10 +901,36 @@ export default function Home() {
     }
   };
 
-  // 添加监控
+  // 添加监控（乐观更新）
   const addMonitor = async (symbol: string, assetType: 'crypto' | 'ashare' | 'stock') => {
     if (isGuest || !token) return;
     
+    // 1. 乐观更新：先在本地添加
+    const newMonitor = {
+      id: Date.now().toString(), // 临时ID
+      userId: user?.id,
+      symbol,
+      displayName: symbol,
+      assetType,
+      enabled: false,
+      interval: '1d',
+      maType: 'SMA',
+      ma1Period: 5,
+      ma2Period: 10,
+      ma3Period: 20,
+      conditions: [{ id: 'c1', type: 'ma', left: 'price', op: '>', right: 'ma3' }],
+      signalType: 'golden',
+      trendStatus: 'neutral',
+      inPosition: false,
+      lastSignalAt: null,
+      dingtalkEnabled: false,
+      dingtalkWebhook: null,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    setMonitors(prev => [...prev, newMonitor]);
+    
+    // 2. 然后调用后端
     try {
       const response = await fetch('/api/monitors', {
         method: 'POST',
@@ -916,41 +948,54 @@ export default function Home() {
           ma1Period: 5,
           ma2Period: 10,
           ma3Period: 20,
-          conditions: [{ id: 'c1', left: 'price', op: '>', right: 'ma3' }],
+          conditions: [{ id: 'c1', type: 'ma', left: 'price', op: '>', right: 'ma3' }],
           signalType: 'golden',
           trendStatus: 'neutral',
         }),
       });
       
       if (response.ok) {
+        // 后端成功后，重新加载真实数据
         await fetchMonitors();
+      } else {
+        // 失败后回滚
+        setMonitors(prev => prev.filter(m => m.symbol !== symbol));
       }
     } catch (error) {
       console.error('添加监控失败:', error);
+      // 失败后回滚
+      setMonitors(prev => prev.filter(m => m.symbol !== symbol));
     }
   };
 
-  // 删除监控
+  // 删除监控（乐观更新）
   const deleteMonitor = async (symbol: string) => {
     if (isGuest || !token) return;
     
+    // 1. 乐观更新：先在本地删除
+    const monitor = monitors.find(m => m.symbol === symbol);
+    const originalMonitors = [...monitors];
+    setMonitors(prev => prev.filter(m => m.symbol !== symbol));
+    
+    // 2. 然后调用后端
+    if (!monitor) return;
+    
     try {
-      const monitor = monitors.find(m => m.symbol === symbol);
-      if (monitor) {
-        const response = await fetch(`/api/monitors/${monitor.id}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-        
-        if (response.ok) {
-          // 删除成功后刷新页面
-          window.location.reload();
-        }
+      const response = await fetch(`/api/monitors/${monitor.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (!response.ok) {
+        // 失败后回滚
+        setMonitors(originalMonitors);
       }
     } catch (error) {
       console.error('删除监控失败:', error);
+      // 失败后回滚
+      setMonitors(originalMonitors);
     }
   };
 

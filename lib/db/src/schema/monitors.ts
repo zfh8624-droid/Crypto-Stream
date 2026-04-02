@@ -6,12 +6,41 @@ export type SignalType = 'golden' | 'death';
 export type TrendStatus = 'bullish' | 'bearish' | 'neutral';
 export type ExitMarketMode = 'bullish' | 'bearish';
 
-export interface Condition {
+export type ConditionType = 'ma' | 'rsi' | 'kdj' | 'volume';
+
+export interface MACondition {
   id: string;
+  type: 'ma';
   left: 'price' | 'ma1' | 'ma2' | 'ma3';
   op: '>' | '<' | '=';
   right: 'price' | 'ma1' | 'ma2' | 'ma3';
 }
+
+export interface RSICondition {
+  id: string;
+  type: 'rsi';
+  period: number;
+  op: '>' | '<' | '=';
+  value: number;
+}
+
+export interface KDJCondition {
+  id: string;
+  type: 'kdj';
+  line: 'k' | 'd' | 'j';
+  op: '>' | '<' | '=';
+  value: number;
+}
+
+export interface VolumeCondition {
+  id: string;
+  type: 'volume';
+  period: number;
+  op: '>' | '<' | '=';
+  ratio: number;
+}
+
+export type Condition = MACondition | RSICondition | KDJCondition | VolumeCondition;
 
 export const monitorsTable = sqliteTable(
   'monitors',
