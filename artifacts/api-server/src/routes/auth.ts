@@ -27,9 +27,12 @@ router.post("/login", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "用户名和密码不能为空" });
     }
 
-    const user = await db.query.usersTable.findFirst({
-      where: eq(usersTable.username, username),
-    });
+    const users = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.username, username))
+      .limit(1);
+    const user = users[0];
 
     console.log("[Login] 查询到的用户:", user);
 
@@ -85,9 +88,12 @@ router.get("/verify", authenticateToken, async (req: Request, res: Response) => 
     }
 
     // 从数据库重新获取用户信息，确保用户存在且状态正常
-    const user = await db.query.usersTable.findFirst({
-      where: eq(usersTable.id, parseInt(req.user.id)),
-    });
+    const users = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, parseInt(req.user.id)))
+      .limit(1);
+    const user = users[0];
 
     if (!user || !user.isActive) {
       return res.status(401).json({ error: "用户不存在或已被禁用" });

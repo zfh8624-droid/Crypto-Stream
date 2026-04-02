@@ -1443,15 +1443,6 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
                           
                           {cfg.enableExitMonitor && (
                             <div className="space-y-3 pt-2">
-                              {/* 已进场开关 */}
-                              <div className="flex items-center justify-between">
-                                <Label className="text-xs">已进场</Label>
-                                <SimpleSwitch
-                                  checked={cfg.inPosition ?? false}
-                                  onCheckedChange={(v) => updateConfig(sym.symbol, { inPosition: v })}
-                                />
-                              </div>
-                              
                               {/* 市场模式选择 */}
                               <div className="space-y-1">
                                 <Label className="text-xs">市场模式</Label>

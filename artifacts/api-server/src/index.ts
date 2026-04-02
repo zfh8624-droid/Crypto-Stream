@@ -40,12 +40,14 @@ async function initAdminUser() {
     const bcrypt = await getBcrypt();
     
     // 创建或更新 admin 用户
-    const existingAdmin = await db.query.usersTable.findFirst({
-      where: eq(usersTable.username, "admin"),
-    });
+    const existingAdmin = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.username, "admin"))
+      .limit(1);
 
     const adminPasswordHash = await bcrypt.hash("admin123", 10);
-    if (!existingAdmin) {
+    if (existingAdmin.length === 0) {
       await db.insert(usersTable).values({
         username: "admin",
         passwordHash: adminPasswordHash,
@@ -63,12 +65,14 @@ async function initAdminUser() {
     logger.info("   密码: admin123");
 
     // 创建或更新 wbz 用户
-    const existingWbz = await db.query.usersTable.findFirst({
-      where: eq(usersTable.username, "wbz"),
-    });
+    const existingWbz = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.username, "wbz"))
+      .limit(1);
 
     const wbzPasswordHash = await bcrypt.hash("wbz123", 10);
-    if (!existingWbz) {
+    if (existingWbz.length === 0) {
       await db.insert(usersTable).values({
         username: "wbz",
         passwordHash: wbzPasswordHash,

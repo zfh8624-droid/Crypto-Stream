@@ -30,6 +30,12 @@ router.get("/monitors", async (req: Request, res: Response) => {
     }));
 
     console.log("[GET /monitors] Processed monitors:", processedMonitors);
+    
+    // 禁用浏览器缓存
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    
     res.json(processedMonitors);
   } catch (error) {
     console.error("Get monitors error:", error);

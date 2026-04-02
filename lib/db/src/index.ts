@@ -4,7 +4,7 @@ import * as schema from "./schema";
 
 const isProduction = process.env.NODE_ENV === "production";
 
-// 本地开发环境使用本地文件，生产环境使用 Turso
+// 如果设置了 TURSO_DATABASE_URL，不管环境都用 Turso
 const localDbUrl = "file:./local.db";
 const tursoDbUrl = process.env.TURSO_DATABASE_URL;
 const tursoAuthToken = process.env.TURSO_AUTH_TOKEN;
@@ -12,12 +12,11 @@ const tursoAuthToken = process.env.TURSO_AUTH_TOKEN;
 let dbUrl: string;
 let authToken: string | undefined;
 
-if (isProduction) {
-  if (!tursoDbUrl) {
-    throw new Error("生产环境必须设置 TURSO_DATABASE_URL 环境变量！");
-  }
+if (tursoDbUrl) {
   dbUrl = tursoDbUrl;
   authToken = tursoAuthToken;
+} else if (isProduction) {
+  throw new Error("生产环境必须设置 TURSO_DATABASE_URL 环境变量！");
 } else {
   dbUrl = localDbUrl;
 }

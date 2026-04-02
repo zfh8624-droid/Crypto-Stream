@@ -336,8 +336,8 @@ class MonitorScheduler {
       let newHasSentExitSignal = monitor.hasSentExitSignal;
       let newPrevClosePrice = monitor.prevClosePrice;
 
-      // 只有启用离场监控且已进场时才检测
-      if (monitor.enableExitMonitor && monitor.inPosition && !monitor.hasSentExitSignal) {
+      // 只要启用离场监控就代表已进场，检测离场信号
+      if (monitor.enableExitMonitor && !monitor.hasSentExitSignal) {
         // 检查是否是A股且在休市时间
         const skipDueToClosed = monitor.assetType === "ashare" && isAShareMarketClosed();
 
