@@ -6,37 +6,39 @@ export type SignalType = 'golden' | 'death';
 export type TrendStatus = 'bullish' | 'bearish' | 'neutral';
 export type ExitMarketMode = 'bullish' | 'bearish';
 
-export type ConditionType = 'ma' | 'rsi' | 'kdj' | 'volume';
+type ConditionType = 'ma' | 'rsi' | 'kdj' | 'volume';
+type Side = 'price' | 'ma1' | 'ma2' | 'ma3';
+type Op = '>' | '<' | '=';
 
-export interface MACondition {
+interface MACondition {
   id: string;
   type: 'ma';
-  left: 'price' | 'ma1' | 'ma2' | 'ma3';
-  op: '>' | '<' | '=';
-  right: 'price' | 'ma1' | 'ma2' | 'ma3';
+  left: Side;
+  op: Op;
+  right: Side;
 }
 
-export interface RSICondition {
+interface RSICondition {
   id: string;
   type: 'rsi';
   period: number;
-  op: '>' | '<' | '=';
+  op: Op;
   value: number;
 }
 
-export interface KDJCondition {
+interface KDJCondition {
   id: string;
   type: 'kdj';
   line: 'k' | 'd' | 'j';
-  op: '>' | '<' | '=';
+  op: Op;
   value: number;
 }
 
-export interface VolumeCondition {
+interface VolumeCondition {
   id: string;
   type: 'volume';
   period: number;
-  op: '>' | '<' | '=';
+  op: Op;
   ratio: number;
 }
 
@@ -66,7 +68,6 @@ export const monitorsTable = sqliteTable(
     trendStatus: text('trend_status').notNull().default('neutral').$type<TrendStatus>(),
     createdAt: integer('created_at').notNull().$defaultFn(() => Date.now()),
     updatedAt: integer('updated_at').notNull().$defaultFn(() => Date.now()),
-    // 离场监控相关字段
     enableExitMonitor: integer('enable_exit_monitor', { mode: 'boolean' }).notNull().default(false),
     inPosition: integer('in_position', { mode: 'boolean' }).notNull().default(false),
     exitMarketMode: text('exit_market_mode').$type<ExitMarketMode>(),
