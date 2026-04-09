@@ -6,7 +6,7 @@ export const usersTable = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     username: text('username').notNull(),
     passwordHash: text('password_hash').notNull(),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+    createdAt: integer('created_at').notNull().$defaultFn(() => Date.now()),
     isAdmin: integer('is_admin', { mode: 'boolean' }).notNull().default(false),
     isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   },

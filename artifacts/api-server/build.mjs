@@ -33,6 +33,7 @@ async function buildAll() {
       "@libsql/client",
       "canvas",
       "bcrypt",
+      "bcryptjs",
       "jsonwebtoken",
       "argon2",
       "fsevents",
@@ -100,6 +101,9 @@ async function buildAll() {
       "puppeteer",
       "puppeteer-core",
       "electron",
+      "@mapbox/node-pre-gyp",
+      "mock-aws-s3",
+      "nock",
     ],
     sourcemap: "linked",
     plugins: [

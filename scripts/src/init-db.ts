@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 import { db, usersTable } from "@workspace/db";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import readline from "readline";
 
 const rl = readline.createInterface({

@@ -1,9 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { db, usersTable } from "@workspace/db";
 import { authenticateToken } from "../middlewares/auth.js";
+import { getBcrypt } from "../lib/bcrypt.js";
 
 // 使用与index.ts相同的逻辑
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
@@ -20,22 +20,39 @@ const router: IRouter = Router();
 router.post("/login", async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
+    console.log("[Login] 尝试登录用户:", username);
 
     if (!username || !password) {
+      console.log("[Login] 用户名或密码为空");
       return res.status(400).json({ error: "用户名和密码不能为空" });
     }
 
-    const user = await db.query.usersTable.findFirst({
-      where: eq(usersTable.username, username),
-    });
+    const users = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.username, username))
+      .limit(1);
+    const user = users[0];
 
-    if (!user || !user.isActive) {
+    console.log("[Login] 查询到的用户:", user);
+
+    if (!user) {
+      console.log("[Login] 用户不存在");
       return res.status(401).json({ error: "用户名或密码错误" });
     }
 
+    if (!user.isActive) {
+      console.log("[Login] 用户未激活:", user.isActive);
+      return res.status(401).json({ error: "用户名或密码错误" });
+    }
+
+    const bcrypt = await getBcrypt();
+    console.log("[Login] 验证密码...");
     const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+    console.log("[Login] 密码匹配结果:", passwordMatch);
 
     if (!passwordMatch) {
+      console.log("[Login] 密码不匹配");
       return res.status(401).json({ error: "用户名或密码错误" });
     }
 
@@ -71,9 +88,12 @@ router.get("/verify", authenticateToken, async (req: Request, res: Response) => 
     }
 
     // 从数据库重新获取用户信息，确保用户存在且状态正常
-    const user = await db.query.usersTable.findFirst({
-      where: eq(usersTable.id, parseInt(req.user.id)),
-    });
+    const users = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, parseInt(req.user.id)))
+      .limit(1);
+    const user = users[0];
 
     if (!user || !user.isActive) {
       return res.status(401).json({ error: "用户不存在或已被禁用" });

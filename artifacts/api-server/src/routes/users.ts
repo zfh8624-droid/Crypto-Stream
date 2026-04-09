@@ -1,8 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcrypt";
 import { db, usersTable } from "@workspace/db";
 import { authenticateToken } from "../middlewares/auth.js";
+import { getBcrypt } from "../lib/bcrypt.js";
 
 const router: IRouter = Router();
 
@@ -59,6 +59,7 @@ router.post("/users", requireAdmin, async (req: Request, res: Response) => {
       return res.status(400).json({ error: "用户名已存在" });
     }
 
+    const bcrypt = await getBcrypt();
     const passwordHash = await bcrypt.hash(password, 10);
     const [newUser] = await db.insert(usersTable).values({
       username,

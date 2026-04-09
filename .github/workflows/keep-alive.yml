@@ -1,0 +1,11 @@
+name: Keep Railway Alive Every 1Min
+on:
+  schedule:
+    - cron: '* * * * *'
+  workflow_dispatch
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Curl keepalive your Railway site
+        run: curl -s https://crypto-stream-production.up.railway.app/
