@@ -823,7 +823,9 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
           prevMa1GtMa2: ma1GtMa2,
         };
 
-        if (isNewSignal) {
+        // 登录用户：只在本地更新状态，不发送钉钉通知（由后端监控调度器统一处理）
+        // 访客用户：可以在前端发送通知
+        if (isNewSignal && isGuest) {
           // 检查 A 股是否在交易时间内
           if (assetType === "ashare" && !isAShareTradingTime()) {
             console.log(`[${sym.symbol}] 非交易时间，跳过信号发送`);
