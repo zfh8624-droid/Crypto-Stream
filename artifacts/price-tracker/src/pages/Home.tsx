@@ -366,7 +366,6 @@ function SymbolInput({
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
           placeholder={placeholder}
           className={`flex-1 text-sm font-mono ${uppercase ? "uppercase" : ""} bg-white/5 dark:bg-black/5 border-2 border-teal-500/40 dark:border-teal-400/40`}
         />
@@ -521,14 +520,20 @@ function CryptoTab({
   const addSymbol = useCallback(async (s: string) => {
     if (isGuest) {
       if (!guestSymbols.includes(s)) {
-        const newSymbols = [...guestSymbols, s];
+        const newSymbols = [...new Set([...guestSymbols, s])];
         setGuestSymbols(newSymbols);
         subscribe([s]);
       }
     } else {
-      await addMonitor(s, 'crypto');
+      // 检查是否已经存在该资产，避免重复添加
+      const existing = monitors.find(m => m.assetType === 'crypto' && m.symbol === s);
+      if (!existing) {
+        await addMonitor(s, 'crypto');
+        // 立即订阅新添加的资产，避免需要刷新页面
+        subscribe([s]);
+      }
     }
-  }, [isGuest, guestSymbols, setGuestSymbols, subscribe, addMonitor]);
+  }, [isGuest, guestSymbols, setGuestSymbols, subscribe, addMonitor, monitors]);
   
   const removeSymbol = useCallback(async (s: string) => {
     if (isGuest) {
@@ -564,7 +569,7 @@ function CryptoTab({
         className="mb-8"
       />
       <SymbolInput
-        label="交易对（自动添加 USDT）" symbols={symbols}
+        label="交易对（自动添加 USDT）" symbols={uniqueSymbols}
         onAdd={addSymbol} onRemove={removeSymbol} placeholder="例如 DOGE" uppercase
       />
       <div className="mt-8 flex items-center justify-between">
@@ -627,7 +632,8 @@ function StockTab({
   const addSymbol = useCallback(async (s: string) => {
     if (isGuest) {
       if (!guestSymbols.includes(s)) {
-        setGuestSymbols([...guestSymbols, s]);
+        const newSymbols = [...new Set([...guestSymbols, s])];
+        setGuestSymbols(newSymbols);
       }
     } else {
       await addMonitor(s, 'stock');
@@ -718,12 +724,34 @@ function AShareTab({
   const { prices, status } = useAShareTracker(uniqueSymbols);
 
   const addSymbol = useCallback(async (s: string) => {
+    // 自动识别A股代码，添加交易所前缀
+    let normalizedSymbol = s.trim();
+    
+    // 如果没有前缀，根据代码开头自动添加
+    if (!normalizedSymbol.startsWith('sh') && !normalizedSymbol.startsWith('sz')) {
+      const code = normalizedSymbol;
+      if (code.length === 6) {
+        const firstTwo = code.substring(0, 2);
+        const firstThree = code.substring(0, 3);
+        
+        if (firstTwo === '60' || firstTwo === '68' || firstThree === '510' || firstThree === '511' || firstThree === '512' || firstThree === '513' || firstThree === '515' || firstThree === '516' || firstThree === '517' || firstThree === '518' || firstThree === '519') {
+          // 沪市股票（60开头为沪市主板，68开头为科创板，51开头为ETF）
+          normalizedSymbol = `sh${code}`;
+        } else if (firstTwo === '00' || firstTwo === '30' || firstThree === '159' || firstThree === '160' || firstThree === '161' || firstThree === '162' || firstThree === '163' || firstThree === '164' || firstThree === '165' || firstThree === '166' || firstThree === '167' || firstThree === '168' || firstThree === '169') {
+          // 深市股票（00开头为深市主板，30开头为创业板，159/16开头为ETF）
+          normalizedSymbol = `sz${code}`;
+        }
+      }
+    }
+    
     if (isGuest) {
-      if (!guestSymbols.includes(s)) {
-        setGuestSymbols([...guestSymbols, s]);
+      if (!guestSymbols.includes(normalizedSymbol)) {
+        // 确保添加后不重复
+        const newSymbols = [...new Set([...guestSymbols, normalizedSymbol])];
+        setGuestSymbols(newSymbols);
       }
     } else {
-      await addMonitor(s, 'ashare');
+      await addMonitor(normalizedSymbol, 'ashare');
     }
   }, [isGuest, guestSymbols, setGuestSymbols, addMonitor]);
   
@@ -762,8 +790,8 @@ function AShareTab({
         }
       />
       <SymbolInput
-        label="代码格式：sh+沪市代码 / sz+深市代码" symbols={symbols}
-        onAdd={addSymbol} onRemove={removeSymbol} placeholder="例如 sh510300 / sz000001"
+        label="代码格式：直接输入6位数字代码（系统会自动识别交易所）" symbols={uniqueSymbols}
+        onAdd={addSymbol} onRemove={removeSymbol} placeholder="例如 600519（贵州茅台）/ 000001（平安银行）"
       />
       <div className="mt-6 rounded-2xl glass-card border-0 p-3 sm:p-4 text-xs text-foreground space-y-2">
         <div className="text-base sm:text-lg font-bold text-foreground flex items-center gap-2">
@@ -771,15 +799,15 @@ function AShareTab({
           常用代码参考
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-2 sm:gap-x-4 gap-y-1 font-mono">
-          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sh510300 沪深300ETF</span>
-          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sh510500 中证500ETF</span>
-          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sh510050 上证50ETF</span>
-          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sh159919 沪深300ETF(嘉实)</span>
-          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sh600519 贵州茅台</span>
-          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sh601318 中国平安</span>
-          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sz000001 平安银行</span>
-          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sz300750 宁德时代</span>
-          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">sh688981 中芯国际</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">510300 沪深300ETF</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">510500 中证500ETF</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">510050 上证50ETF</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">159919 沪深300ETF(嘉实)</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">600519 贵州茅台</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">601318 中国平安</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">000001 平安银行</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">300750 宁德时代</span>
+          <span className="bg-teal-500/8 border border-teal-500/30 px-2 py-1 rounded text-[10px] sm:text-xs truncate text-teal-700">688981 中芯国际</span>
         </div>
       </div>
       <div className="mt-8 flex items-center justify-between">
@@ -787,7 +815,7 @@ function AShareTab({
         <StatusDot status={status} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {symbols.map((code) =>
+        {uniqueSymbols.map((code) =>
           prices[code] ? (
             <AShareCard 
               key={code} 
@@ -934,6 +962,9 @@ export default function Home() {
   const deleteMonitor = async (symbol: string) => {
     if (isGuest || !token) return;
     
+    // 立即更新本地状态，让用户立即看到资产被移除
+    setMonitors(monitors.filter(m => m.symbol !== symbol));
+    
     try {
       const monitor = monitors.find(m => m.symbol === symbol);
       if (monitor) {
@@ -944,13 +975,15 @@ export default function Home() {
           },
         });
         
-        if (response.ok) {
-          // 删除成功后刷新页面
-          window.location.reload();
+        if (!response.ok) {
+          // 如果删除失败，恢复本地状态
+          await fetchMonitors();
         }
       }
     } catch (error) {
       console.error('删除监控失败:', error);
+      // 如果发生错误，恢复本地状态
+      await fetchMonitors();
     }
   };
 

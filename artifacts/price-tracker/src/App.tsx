@@ -16,6 +16,9 @@ function AppContent() {
 
   // 检查用户是否已经选择过模式
   const hasChosenMode = localStorage.getItem('hasChosenMode') === 'true';
+  // 获取当前路径
+  const [location] = window.location.href.split('/');
+  const currentPath = window.location.pathname;
 
   if (loading) {
     return (
@@ -23,6 +26,11 @@ function AppContent() {
         <div className="text-muted-foreground">加载中...</div>
       </div>
     );
+  }
+
+  // 如果用户没有选择过模式，但访问的是登录页面，直接显示登录页面
+  if (!hasChosenMode && currentPath === '/login') {
+    return <Login />;
   }
 
   // 如果用户没有选择过模式，显示欢迎页

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
-    "dev:tsx": "tsx src/index.ts",
+    "dev:tsx": "export TURSO_DATABASE_URL=libsql://zfhtest-zfh8624-droid.aws-us-east-1.turso.io && export TURSO_AUTH_TOKEN=eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NzUwNjg2NTMsImlkIjoiMDE5ZDRhNTQtNDQwMS03ZjA0LWIwNDUtNDM5NWNjYTEyNDcxIiwicmlkIjoiYmViMzBlZTctODhkMi00ZjE2LTllNjMtMmFhM2I4ZjM4ZmIzIn0.wz4_0oEt38ZLDtZjRdbiOy1htXmK3GxlqqW9P-Sel--uR9Di2hwe5SHwkJ5jr_lBiPjOUy4WQI_4HcFt6Ag2Ag && node --import tsx src/index.ts",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"

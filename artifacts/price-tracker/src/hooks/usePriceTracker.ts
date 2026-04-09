@@ -108,6 +108,13 @@ export function useBinanceTracker(config: CryptoConfig) {
   const { status, send } = useWebSocket(wsUrl, { onMessage, onOpen, heartbeatMs: 60000 });
   sendRef.current = send;
 
+  // 当 symbols 变化时，重新订阅所有资产
+  useEffect(() => {
+    if (sendRef.current && config.symbols.length > 0) {
+      sendRef.current({ type: "subscribe", symbols: config.symbols });
+    }
+  }, [symbolsKey]);
+
   const subscribe = useCallback((symbols: string[]) => {
     if (sendRef.current) {
       sendRef.current({ type: "subscribe", symbols });
@@ -193,6 +200,15 @@ export function useFinnhubTracker(config: StockConfig) {
 
   const { status, send } = useWebSocket(wsUrlWithToken, { onMessage, onOpen, heartbeatMs: 60000 });
   sendRef.current = send;
+
+  // 当 symbols 变化时，重新订阅所有资产
+  useEffect(() => {
+    if (sendRef.current && config.symbols.length > 0) {
+      for (const sym of config.symbols) {
+        sendRef.current({ type: "subscribe", symbol: sym });
+      }
+    }
+  }, [symbolsKey]);
 
   return { prices, status };
 }
