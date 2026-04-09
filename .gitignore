@@ -52,3 +52,12 @@ Thumbs.db
 data/*.db
 data/*.db-shm
 data/*.db-wal
+artifacts/api-server/local.db
+artifacts/api-server/local.db-shm
+artifacts/api-server/local.db-wal
+lib/db/local.db
+lib/db/local.db-shm
+lib/db/local.db-wal
+
+# Environment configuration
+.env

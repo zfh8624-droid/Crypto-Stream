@@ -304,6 +304,27 @@ async function apiFetchCloses(
   return json.closes;
 }
 
+// 判断是否为 A 股交易时间
+function isAShareTradingTime() {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+  
+  // 周一至周五
+  if (dayOfWeek < 1 || dayOfWeek > 5) {
+    return false;
+  }
+  
+  // 上午 9:30-11:30
+  const isMorningTrading = (hours === 9 && minutes >= 30) || (hours === 10) || (hours === 11 && minutes < 30);
+  
+  // 下午 13:00-15:00
+  const isAfternoonTrading = (hours === 13) || (hours === 14) || (hours === 15 && minutes === 0);
+  
+  return isMorningTrading || isAfternoonTrading;
+}
+
 async function sendAlert(content: string, webhookUrl: string) {
   await fetch("/api/notify/send", {
     method: "POST",
@@ -609,44 +630,17 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
   const symbolsRef = useRef(symbols);
   symbolsRef.current = symbols;
 
-  // 用户模式下：合并后端监控 + 当前实时价格符号
+  // 用户模式下：只使用当前传递的 symbols（已去重）
   const displaySymbols = useMemo(() => {
     try {
-      if (isGuest) {
-        // 访客模式：只显示有实时价格的
-        return symbols.filter((s) => s.currentPrice != null);
-      } else {
-        // 用户模式：显示所有后端监控 + 当前实时价格符号（去重）
-        const symbolMap = new Map<string, MonitoredSymbol>();
-        
-        // 先添加所有后端监控（安全检查）
-        if (backendMonitors && typeof backendMonitors === 'object') {
-          Object.values(backendMonitors).forEach(m => {
-            if (m && m.symbol && m.displayName) {
-              symbolMap.set(m.symbol, {
-                symbol: m.symbol,
-                displayName: m.displayName,
-                currentPrice: null, // 后端监控可能没有实时价格
-              });
-            }
-          });
-        }
-        
-        // 再添加当前有实时价格的符号（覆盖可能缺失的 displayName）
-        if (symbols && Array.isArray(symbols)) {
-          symbols.filter(s => s && s.currentPrice != null).forEach(s => {
-            symbolMap.set(s.symbol, s);
-          });
-        }
-        
-        return Array.from(symbolMap.values());
-      }
+      // 只显示有实时价格的符号
+      return symbols.filter((s) => s.currentPrice != null);
     } catch (err) {
       console.error('[displaySymbols] Error:', err);
       // 出错时回退到只显示有实时价格的
       return symbols.filter((s) => s.currentPrice != null);
     }
-  }, [symbols, backendMonitors, isGuest]);
+  }, [symbols]);
 
   // 用户模式下，后端数据加载完成后应用到configs
   useEffect(() => {
@@ -687,10 +681,21 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
     setConfigs(initial);
   }, [symbols.map(s => s.symbol).join(","), assetType, isGuest, userId, backendMonitors, loadingMonitors]);
 
-  // 当有新symbol时，加载对应的配置和运行时（处理所有 displaySymbols）
+  // 当 symbols 变化时，更新配置和运行时状态，移除已删除的资产
   useEffect(() => {
+    const currentSymbols = new Set(displaySymbols.map(s => s.symbol));
+    
     setConfigs((prev) => {
       const updated = { ...prev };
+      
+      // 移除已删除的资产配置
+      Object.keys(prev).forEach(symbol => {
+        if (!currentSymbols.has(symbol)) {
+          delete updated[symbol];
+        }
+      });
+      
+      // 添加新资产的配置
       for (const sym of displaySymbols) {
         if (!updated[sym.symbol]) {
           updated[sym.symbol] = isGuest ? loadConfig(assetType, sym.symbol, isGuest, userId) : getDefaultConfig(assetType);
@@ -701,6 +706,17 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
 
     setRuntimes((prev) => {
       const updated = { ...prev };
+      
+      // 移除已删除的资产运行时状态
+      Object.keys(prev).forEach(symbol => {
+        if (!currentSymbols.has(symbol)) {
+          delete updated[symbol];
+          // 清除已删除资产的缓存
+          delete closesCache.current[symbol];
+        }
+      });
+      
+      // 添加新资产的运行时状态
       for (const sym of displaySymbols) {
         if (!updated[sym.symbol]) {
           const persistedRt = loadRuntime(assetType, sym.symbol, isGuest, userId);
@@ -721,6 +737,13 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
         }
       }
       return updated;
+    });
+    
+    // 停止已删除资产的刷新定时器
+    Object.keys(runtimes).forEach(symbol => {
+      if (!currentSymbols.has(symbol)) {
+        stopRefreshTimer(symbol);
+      }
     });
   }, [displaySymbols.map((s) => s.symbol).join(","), assetType, isGuest, userId]);
 
@@ -801,33 +824,38 @@ export function GoldenCrossMonitor({ assetType, symbols }: Props) {
         };
 
         if (isNewSignal) {
-          const signalLabel = cfg.signalType === "golden" ? "金叉" : "死叉";
-          const now = new Date();
-          const timeStr = now.toLocaleString("zh-CN", {
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: false
-          });
-          const msg =
-            `🔔 ${signalLabel}信号！\n` +
-            `触发时间：${timeStr}\n` +
-            `标的：${sym.displayName}（${sym.symbol}）\n` +
-            `周期：${cfg.interval}  均线类型：${cfg.maType}\n` +
-            `当前价：${fmtVal(sym.currentPrice, true, isCNY)}\n` +
-            `MA${cfg.ma1Period}（短）：${fmtVal(ma1Val, true, isCNY)}\n` +
-            `MA${cfg.ma2Period}（中）：${fmtVal(ma2Val, true, isCNY)}\n` +
-            `MA${cfg.ma3Period}（长）：${fmtVal(ma3Val, true, isCNY)}\n` +
-            cfg.conditions
-              .map((c) => `${SIDE_LABELS[c.left]} ${c.op} ${SIDE_LABELS[c.right]}`)
-              .join("，");
-          sendAlert(msg, dingtalkWebhook).catch((e) => console.error("钉钉推送失败", e));
-          newHasSentSignal = true;
-          runtimeData.hasSentSignal = true;
-          saveRuntime(assetType, sym.symbol, runtimeData);
+          // 检查 A 股是否在交易时间内
+          if (assetType === "ashare" && !isAShareTradingTime()) {
+            console.log(`[${sym.symbol}] 非交易时间，跳过信号发送`);
+          } else {
+            const signalLabel = cfg.signalType === "golden" ? "金叉" : "死叉";
+            const now = new Date();
+            const timeStr = now.toLocaleString("zh-CN", {
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              hour12: false
+            });
+            const msg =
+              `🔔 ${signalLabel}信号！\n` +
+              `触发时间：${timeStr}\n` +
+              `标的：${sym.displayName}（${sym.symbol}）\n` +
+              `周期：${cfg.interval}  均线类型：${cfg.maType}\n` +
+              `当前价：${fmtVal(sym.currentPrice, true, isCNY)}\n` +
+              `MA${cfg.ma1Period}（短）：${fmtVal(ma1Val, true, isCNY)}\n` +
+              `MA${cfg.ma2Period}（中）：${fmtVal(ma2Val, true, isCNY)}\n` +
+              `MA${cfg.ma3Period}（长）：${fmtVal(ma3Val, true, isCNY)}\n` +
+              cfg.conditions
+                .map((c) => `${SIDE_LABELS[c.left]} ${c.op} ${SIDE_LABELS[c.right]}`)
+                .join("，");
+            sendAlert(msg, dingtalkWebhook).catch((e) => console.error("钉钉推送失败", e));
+            newHasSentSignal = true;
+            runtimeData.hasSentSignal = true;
+            saveRuntime(assetType, sym.symbol, runtimeData);
+          }
         } else {
           // 每次都保存状态，刷新页面后数据不丢失
           saveRuntime(assetType, sym.symbol, runtimeData);
